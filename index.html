@@ -410,7 +410,8 @@ async function loadTf(sym, tf, btn){
           priceLine(o.candle, oz.p, "#e8c34a", "ОСНОВНОЙ", true);
         }
       }
-      urovniLines(o.candle, p.urovni);
+      // 02.09 Сергей: локальные уровни с графика УБРАНЫ («остальное — не воспринимать»);
+      // остаются: вход/стоп/цели + ОСНОВНЫЕ отрезками от зарождения
       priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
       priceLine(o.candle, p.stop, "#ff5252", "стоп", true);
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
