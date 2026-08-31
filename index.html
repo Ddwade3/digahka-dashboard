@@ -394,9 +394,21 @@ async function loadTf(sym, tf, btn){
     o.lastBar = bars[bars.length-1];
     const p = D.pozicii.find(x => x.symbol === sym);
     if (p){
+      // ОСНОВНЫЕ — отрезками ОТ ЗАРОЖДЕНИЯ (как сервис), только сторона сделки
+      const oznuzh = (p.direction === "long") ? "R" : "S";
+      const lastT = bars.length ? bars[bars.length-1].time : null;
       for (const oz of (p.osnovnye || [])){
-        priceLine(o.candle, oz.p, "#e8c34a",
-          "ОСНОВНОЙ" + (oz.stupeney > 1 ? " ·" + oz.stupeney : ""), true);
+        if (oz.storona !== oznuzh) continue;
+        if (oz.rozhdenie_ts && lastT){
+          const t0 = Math.floor(oz.rozhdenie_ts/1000) + SDVIG;
+          const ls = o.chart.addLineSeries({ color:"#e8c34a", lineWidth:2,
+            priceLineVisible:false, lastValueVisible:true,
+            title:"ОСНОВНОЙ" + (oz.stupeney > 1 ? "·" + oz.stupeney : "") });
+          ls.setData([{time: Math.max(t0, bars[0].time), value: oz.p},
+                      {time: lastT, value: oz.p}]);
+        } else {
+          priceLine(o.candle, oz.p, "#e8c34a", "ОСНОВНОЙ", true);
+        }
       }
       urovniLines(o.candle, p.urovni);
       priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
