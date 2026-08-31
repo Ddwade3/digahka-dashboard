@@ -394,6 +394,10 @@ async function loadTf(sym, tf, btn){
     o.lastBar = bars[bars.length-1];
     const p = D.pozicii.find(x => x.symbol === sym);
     if (p){
+      for (const oz of (p.osnovnye || [])){
+        priceLine(o.candle, oz.p, "#e8c34a",
+          "ОСНОВНОЙ" + (oz.stupeney > 1 ? " ·" + oz.stupeney : ""), true);
+      }
       urovniLines(o.candle, p.urovni);
       priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
       priceLine(o.candle, p.stop, "#ff5252", "стоп", true);
