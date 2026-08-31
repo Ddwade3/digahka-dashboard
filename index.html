@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дигашка-бот · Дашборд</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#21262d; --txt:#c9d1d9;
+          --dim:#8b949e; --green:#3fb950; --red:#f85149; --accent:#58a6ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt);
+         font:14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; padding:16px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:16px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+           gap:10px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:12px 14px; }
+  .card .t { color:var(--dim); font-size:11px; text-transform:uppercase; }
+  .card .v { font-size:22px; font-weight:600; margin-top:2px; }
+  .green { color:var(--green); } .red { color:var(--red); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; }
+  .b-ok { background:#12261e; color:var(--green); }
+  .b-bad { background:#2d1214; color:var(--red); }
+  h2 { font-size:14px; margin:18px 0 8px; color:var(--accent); }
+  table { width:100%; border-collapse:collapse; background:var(--card);
+          border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th, td { padding:7px 10px; text-align:left; font-size:13px;
+           border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:500; font-size:11px; text-transform:uppercase; }
+  tr:last-child td { border-bottom:none; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .exit { color:var(--dim); font-size:12px; max-width:340px; }
+  .scroll { overflow-x:auto; }
+  @media (max-width:600px){ .exit{display:none} th.exit{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🤖 Дигашка-бот</h1>
+  <div class="sub" id="status">загрузка…</div>
+
+  <div class="cards">
+    <div class="card"><div class="t">Баланс (бумага)</div><div class="v" id="balance">—</div></div>
+    <div class="card"><div class="t">Сегодня</div><div class="v" id="today">—</div></div>
+    <div class="card"><div class="t">Неделя</div><div class="v" id="week">—</div></div>
+    <div class="card"><div class="t">Открытые позиции</div><div class="v" id="npos">—</div></div>
+  </div>
+
+  <div id="poziciiBlock" style="display:none">
+    <h2>Открытые позиции</h2>
+    <div class="scroll"><table id="pozicii"><thead>
+      <tr><th>Монета</th><th>Сторона</th><th class="num">Вход</th><th class="num">Стоп</th></tr>
+    </thead><tbody></tbody></table></div>
+  </div>
+
+  <h2>Сделки сегодня</h2>
+  <div class="scroll"><table id="sdelki"><thead>
+    <tr><th>Время</th><th>Монета</th><th>Сторона</th><th>Ветка</th>
+        <th class="num">PnL %</th><th class="num">$</th><th class="exit">Выход</th></tr>
+  </thead><tbody></tbody></table></div>
+
+  <h2>По дням (неделя)</h2>
+  <div class="scroll"><table id="dni"><thead>
+    <tr><th>Дата</th><th class="num">Сделок</th><th class="num">Итог $</th><th class="num">Винрейт</th></tr>
+  </thead><tbody></tbody></table></div>
+
+  <h2>Ветки входа за 7 дней</h2>
+  <div class="scroll"><table id="formacii"><thead>
+    <tr><th>Ветка</th><th class="num">Сделок</th><th class="num">Итог $</th><th class="num">Винрейт</th></tr>
+  </thead><tbody></tbody></table></div>
+</div>
+
+<script>
+function cls(v){ return v > 0 ? "green" : (v < 0 ? "red" : ""); }
+function money(v){ return (v > 0 ? "+" : "") + v.toFixed(2) + "$"; }
+
+async function load(){
+  try{
+    const r = await fetch("data.json?ts=" + Date.now());
+    const d = await r.json();
+    const sobran = new Date(d.sobran.replace(" ", "T"));
+    const minAgo = Math.round((Date.now() - sobran.getTime()) / 60000);
+    const fresh = minAgo <= 10;
+    document.getElementById("status").innerHTML =
+      (d.bot_zhiv ? '<span class="badge b-ok">бот работает</span>'
+                  : '<span class="badge b-bad">БОТ ОСТАНОВЛЕН</span>') +
+      ' <span class="badge ' + (fresh ? "b-ok" : "b-bad") + '">данные: ' +
+      d.sobran.slice(11,16) + (fresh ? "" : " · СТАРЫЕ (" + minAgo + " мин)") + "</span>";
+
+    document.getElementById("balance").textContent = d.balance != null ? d.balance.toFixed(2) + "$" : "—";
+    const s = d.segodnya, w = d.nedelya;
+    const te = document.getElementById("today");
+    te.textContent = money(s.usd) + " · " + s.n + " сд.";
+    te.className = "v " + cls(s.usd);
+    const we = document.getElementById("week");
+    we.textContent = money(w.usd) + " · " + w.n + " сд.";
+    we.className = "v " + cls(w.usd);
+    document.getElementById("npos").textContent = d.pozicii.length;
+
+    const pb = document.getElementById("poziciiBlock");
+    pb.style.display = d.pozicii.length ? "" : "none";
+    fill("pozicii", d.pozicii.map(p =>
+      [p.symbol, p.direction === "long" ? "лонг" : "шорт",
+       ["num", String(p.entry)], ["num", String(p.stop)]]));
+
+    fill("sdelki", s.sdelki.map(x =>
+      [x.vremya, x.symbol, x.dir === "long" ? "лонг" : "шорт", x.formation || "",
+       ["num " + cls(x.pnl_pct), (x.pnl_pct > 0 ? "+" : "") + x.pnl_pct.toFixed(2) + "%"],
+       ["num " + cls(x.usd), money(x.usd)],
+       ["exit", x.exit]]));
+
+    fill("dni", d.nedelya.dni.map(x =>
+      [x.data, ["num", String(x.n)],
+       ["num " + cls(x.usd), money(x.usd)],
+       ["num", x.wr == null ? "—" : x.wr + "%"]]));
+
+    fill("formacii", d.formacii7.map(x =>
+      [x.name, ["num", String(x.n)],
+       ["num " + cls(x.usd), money(x.usd)],
+       ["num", x.wr + "%"]]));
+  } catch(e){
+    document.getElementById("status").innerHTML =
+      '<span class="badge b-bad">нет данных: ' + e.message + "</span>";
+  }
+}
+function fill(id, rows){
+  const tb = document.querySelector("#" + id + " tbody");
+  tb.innerHTML = "";
+  for(const row of rows){
+    const tr = document.createElement("tr");
+    for(const cell of row){
+      const td = document.createElement("td");
+      if(Array.isArray(cell)){ td.className = cell[0]; td.textContent = cell[1]; }
+      else td.textContent = cell;
+      tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  }
+  if(!rows.length){
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8; td.style.color = "var(--dim)"; td.textContent = "пусто";
+    tr.appendChild(td); tb.appendChild(tr);
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
