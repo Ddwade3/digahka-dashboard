@@ -350,17 +350,24 @@ function mkChart(el){
     }};
 }
 function urovniLines(series, urovni){
-  for (const u of (urovni || [])){
+  // ЛОКАЛЬНЫЕ уровни — бледные и тихие (Сергей 01.09: «не миллиард уровней»);
+  // подпись на шкале только у значимых (2+ касания)
+  for (const u of (urovni || []).slice(0, 8)){
     if (!u.p) continue;
-    series.createPriceLine({ price:+u.p, color:"#5a6472", lineWidth:1,
+    const znachimyy = (u.kas || 0) >= 2;
+    series.createPriceLine({ price:+u.p,
+      color: znachimyy ? "#6b7687" : "#39414d", lineWidth:1,
       lineStyle:LightweightCharts.LineStyle.SparseDotted,
-      title:(u.tf||"") + (u.kas ? " ·" + u.kas + "кас" : "") });
+      axisLabelVisible: znachimyy,
+      title: znachimyy ? ((u.tf||"") + "·" + u.kas + "кас") : "" });
   }
 }
-function priceLine(series, price, color, title){
+function priceLine(series, price, color, title, glavnaya){
   if (price == null) return;
-  series.createPriceLine({ price:+price, color, lineWidth:1,
-    lineStyle:LightweightCharts.LineStyle.Dashed, title });
+  series.createPriceLine({ price:+price, color,
+    lineWidth: glavnaya ? 2 : 1,
+    lineStyle: glavnaya ? LightweightCharts.LineStyle.Solid
+                        : LightweightCharts.LineStyle.Dashed, title });
 }
 async function toggleChart(sym){
   const box = $("cb-" + sym), btn = $("btn-" + sym);
@@ -388,9 +395,10 @@ async function loadTf(sym, tf, btn){
     const p = D.pozicii.find(x => x.symbol === sym);
     if (p){
       urovniLines(o.candle, p.urovni);
-      priceLine(o.candle, p.entry, "#c9d1d9", "вход");
-      priceLine(o.candle, p.stop, "#ff5252", "стоп");
-      (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
+      priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
+      priceLine(o.candle, p.stop, "#ff5252", "стоп", true);
+      (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
+          "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
       if (p.open_time){
         o.candle.setMarkers([{ time: Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60,
           position: p.direction === "long" ? "belowBar" : "aboveBar",
@@ -426,7 +434,8 @@ async function dealChart(x, tr){
     priceLine(o.candle, x.entry_price, "#c9d1d9", "вход");
     priceLine(o.candle, x.stop, "#ff5252", "стоп");
     priceLine(o.candle, x.exit_price, "#f7b731", "выход");
-    (x.targets||[]).slice(0,3).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
+    (x.targets||[]).slice(0,3).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
+        "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : ""), true));
     const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/60)*60;
     const mk = [{ time:mt(x.entry_time), position: x.dir==="long"?"belowBar":"aboveBar",
                   color:"#f7b731", shape:"arrowUp", text:"вход" }];
