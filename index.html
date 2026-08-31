@@ -4,149 +4,550 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Дигашка-бот · Дашборд</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-  :root { --bg:#0d1117; --card:#161b22; --line:#21262d; --txt:#c9d1d9;
-          --dim:#8b949e; --green:#3fb950; --red:#f85149; --accent:#58a6ff; }
+  :root { --bg:#0b0e14; --card:#141922; --card2:#1a2029; --line:#232a36; --txt:#d7dee8;
+          --dim:#7d8794; --green:#2ecc71; --red:#ff5252; --accent:#4da3ff; --amber:#f7b731; }
   * { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
   body { background:var(--bg); color:var(--txt);
-         font:14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; padding:16px; }
-  .wrap { max-width:1000px; margin:0 auto; }
-  h1 { font-size:18px; margin-bottom:4px; }
-  .sub { color:var(--dim); font-size:12px; margin-bottom:16px; }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-           gap:10px; margin-bottom:16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+         font:14px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif; padding-bottom:40px; }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 14px; }
+
+  /* ── верхняя панель ── */
+  .topbar { position:sticky; top:0; z-index:50; background:rgba(11,14,20,.92);
+            backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+  .topbar .in { max-width:1060px; margin:0 auto; padding:10px 14px;
+                display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .brand { font-weight:700; font-size:15px; }
+  .badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px;
+           border-radius:20px; font-size:12px; white-space:nowrap; }
+  .b-ok { background:#11271c; color:var(--green); }
+  .b-bad { background:#2d1214; color:var(--red); }
+  .b-dim { background:var(--card2); color:var(--dim); }
+  .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .dot.pulse { animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .balance { margin-left:auto; font-size:17px; font-weight:700; }
+  .balance small { color:var(--dim); font-weight:400; font-size:11px; display:block; text-align:right; }
+
+  h2 { font-size:13px; margin:22px 0 10px; color:var(--dim); text-transform:uppercase;
+       letter-spacing:.4px; }
+  .green { color:var(--green); } .red { color:var(--red); } .dim { color:var(--dim); }
+
+  /* ── карточка позиции ── */
+  .pos { background:var(--card); border:1px solid var(--line); border-radius:14px;
+         padding:16px; margin-bottom:12px; }
+  .pos-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .pos-sym { font-size:17px; font-weight:700; }
+  .side { font-size:11px; padding:2px 8px; border-radius:6px; font-weight:600; }
+  .side.long { background:#11271c; color:var(--green); }
+  .side.short { background:#2d1214; color:var(--red); }
+  .pos-pnl { margin-left:auto; font-size:22px; font-weight:700;
+             font-variant-numeric:tabular-nums; }
+  .pos-sub { color:var(--dim); font-size:12px; margin-top:2px; }
+
+  /* шкала пути */
+  .path { margin:22px 6px 6px; position:relative; height:58px; }
+  .path .rail { position:absolute; top:28px; left:0; right:0; height:6px;
+                border-radius:3px; background:var(--line); overflow:hidden; }
+  .path .zone-risk { position:absolute; top:0; bottom:0; left:0;
+                     background:linear-gradient(90deg,#5c1f22,#3a1a1c); }
+  .path .zone-run { position:absolute; top:0; bottom:0;
+                    background:linear-gradient(90deg,#173428,#0f2018); }
+  .path .tick { position:absolute; top:22px; width:2px; height:18px; border-radius:1px; }
+  .path .tick label { position:absolute; top:20px; left:50%; transform:translateX(-50%);
+                      font-size:10px; color:var(--dim); white-space:nowrap; }
+  .path .tick .pr { position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+                    font-size:10px; color:var(--dim); white-space:nowrap; }
+  .path .marker { position:absolute; top:17px; width:14px; height:28px; margin-left:-7px;
+                  transition:left .6s ease; z-index:5; }
+  .path .marker .arr { width:0; height:0; margin:0 auto;
+                       border-left:7px solid transparent; border-right:7px solid transparent;
+                       border-top:9px solid var(--amber); }
+  .path .marker .stem { width:2px; height:14px; background:var(--amber); margin:0 auto; }
+  .path .marker .pr { position:absolute; top:-18px; left:50%; transform:translateX(-50%);
+                      font-size:11px; font-weight:700; color:var(--amber); white-space:nowrap; }
+  .path-note { font-size:12px; color:var(--dim); margin:4px 6px 0; }
+
+  .pos-actions { margin-top:12px; }
+  .btn { background:var(--card2); border:1px solid var(--line); color:var(--txt);
+         border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.active { border-color:var(--accent); color:var(--accent); }
+  .chartbox { margin-top:12px; border:1px solid var(--line); border-radius:10px;
+              overflow:hidden; background:#0d1117; }
+  .chartbox .tfs { display:flex; gap:6px; padding:8px; border-bottom:1px solid var(--line); }
+  .tfbtn { background:none; border:1px solid var(--line); color:var(--dim); border-radius:6px;
+           padding:2px 10px; font-size:12px; cursor:pointer; }
+  .tfbtn.active { color:var(--accent); border-color:var(--accent); }
+  .chart { height:340px; }
+
+  /* ── метрики ── */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+           gap:10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
           padding:12px 14px; }
   .card .t { color:var(--dim); font-size:11px; text-transform:uppercase; }
-  .card .v { font-size:22px; font-weight:600; margin-top:2px; }
-  .green { color:var(--green); } .red { color:var(--red); }
-  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; }
-  .b-ok { background:#12261e; color:var(--green); }
-  .b-bad { background:#2d1214; color:var(--red); }
-  h2 { font-size:14px; margin:18px 0 8px; color:var(--accent); }
+  .card .v { font-size:20px; font-weight:700; margin-top:2px;
+             font-variant-numeric:tabular-nums; }
+  .card .s { font-size:11px; color:var(--dim); }
+
+  /* ── таблицы ── */
+  .seg { display:flex; gap:6px; margin-bottom:10px; }
   table { width:100%; border-collapse:collapse; background:var(--card);
-          border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  th, td { padding:7px 10px; text-align:left; font-size:13px;
+          border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { padding:8px 10px; text-align:left; font-size:13px;
            border-bottom:1px solid var(--line); }
-  th { color:var(--dim); font-weight:500; font-size:11px; text-transform:uppercase; }
+  th { color:var(--dim); font-weight:500; font-size:10px; text-transform:uppercase; }
   tr:last-child td { border-bottom:none; }
+  tbody tr { cursor:pointer; }
+  tbody tr:hover { background:var(--card2); }
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .exit { color:var(--dim); font-size:12px; max-width:340px; }
-  .scroll { overflow-x:auto; }
-  @media (max-width:600px){ .exit{display:none} th.exit{display:none} }
+  .exit { color:var(--dim); font-size:12px; max-width:330px; overflow:hidden;
+          text-overflow:ellipsis; white-space:nowrap; }
+  .scroll { overflow-x:auto; border-radius:12px; }
+  .rowchart td { padding:0 !important; cursor:default; }
+  .bar-wrap { display:flex; align-items:center; gap:8px; }
+  .bar { height:8px; border-radius:4px; min-width:2px; }
+
+  .eq { background:var(--card); border:1px solid var(--line); border-radius:12px;
+        padding:10px; margin-bottom:12px; }
+  .eq .chart { height:180px; }
+  @media (max-width:640px){
+    .exit{display:none} th.exit{display:none}
+    .pos-pnl{font-size:18px}
+    .chart{height:260px}
+  }
 </style>
 </head>
 <body>
+<div class="topbar"><div class="in">
+  <span class="brand">🤖 Дигашка-бот</span>
+  <span class="badge b-dim" id="botBadge"><span class="dot"></span>…</span>
+  <span class="badge b-dim" id="dataBadge">данные…</span>
+  <span class="badge b-dim" id="liveBadge"><span class="dot"></span>эфир…</span>
+  <span class="balance" id="balance">—<small>баланс (бумага)</small></span>
+</div></div>
+
 <div class="wrap">
-  <h1>🤖 Дигашка-бот</h1>
-  <div class="sub" id="status">загрузка…</div>
+  <div id="positions"></div>
 
-  <div class="cards">
-    <div class="card"><div class="t">Баланс (бумага)</div><div class="v" id="balance">—</div></div>
-    <div class="card"><div class="t">Сегодня</div><div class="v" id="today">—</div></div>
-    <div class="card"><div class="t">Неделя</div><div class="v" id="week">—</div></div>
-    <div class="card"><div class="t">Открытые позиции</div><div class="v" id="npos">—</div></div>
-  </div>
+  <h2>Сегодня</h2>
+  <div class="cards" id="todayCards"></div>
 
-  <div id="poziciiBlock" style="display:none">
-    <h2>Открытые позиции</h2>
-    <div class="scroll"><table id="pozicii"><thead>
-      <tr><th>Монета</th><th>Сторона</th><th class="num">Вход</th><th class="num">Стоп</th></tr>
-    </thead><tbody></tbody></table></div>
-  </div>
-
-  <h2>Сделки сегодня</h2>
+  <h2 id="dealsTitle">Сделки</h2>
+  <div class="seg" id="daySeg"></div>
   <div class="scroll"><table id="sdelki"><thead>
-    <tr><th>Время</th><th>Монета</th><th>Сторона</th><th>Ветка</th>
+    <tr><th>Время</th><th>Монета</th><th></th><th>Ветка</th>
         <th class="num">PnL %</th><th class="num">$</th><th class="exit">Выход</th></tr>
   </thead><tbody></tbody></table></div>
+  <div id="dealChart"></div>
 
-  <h2>По дням (неделя)</h2>
+  <h2>Капитал за 14 дней</h2>
+  <div class="eq"><div class="chart" id="equityChart"></div></div>
+
+  <h2>По дням</h2>
   <div class="scroll"><table id="dni"><thead>
-    <tr><th>Дата</th><th class="num">Сделок</th><th class="num">Итог $</th><th class="num">Винрейт</th></tr>
+    <tr><th>Дата</th><th class="num">Сделок</th><th class="num">Винрейт</th>
+        <th style="width:45%">Итог $</th></tr>
   </thead><tbody></tbody></table></div>
 
-  <h2>Ветки входа за 7 дней</h2>
+  <h2>Ветки входа · 7 дней</h2>
   <div class="scroll"><table id="formacii"><thead>
-    <tr><th>Ветка</th><th class="num">Сделок</th><th class="num">Итог $</th><th class="num">Винрейт</th></tr>
+    <tr><th>Ветка</th><th class="num">Сделок</th><th class="num">Винрейт</th>
+        <th style="width:45%">Итог $</th></tr>
   </thead><tbody></tbody></table></div>
 </div>
 
 <script>
-function cls(v){ return v > 0 ? "green" : (v < 0 ? "red" : ""); }
+"use strict";
+const $ = id => document.getElementById(id);
+let D = null;                     // data.json
+const live = {};                  // {SYMBOL: цена}
+let ws = null, wsOK = false;
+const openCharts = {};            // {SYMBOL: {chart, candle, tf}}
+let dealChartObj = null;
+
+/* ───────── форматирование ───────── */
+function fmtP(v){                 // цена: 5 значащих
+  if (v == null) return "—";
+  const a = Math.abs(v);
+  const d = a >= 1000 ? 2 : a >= 10 ? 3 : a >= 0.1 ? 5 : 6;
+  return (+v).toFixed(d).replace(/\.?0+$/, m => m.includes(".") ? "" : m);
+}
 function money(v){ return (v > 0 ? "+" : "") + v.toFixed(2) + "$"; }
+function cls(v){ return v > 0 ? "green" : (v < 0 ? "red" : "dim"); }
+function dur(sec){
+  const m = Math.floor(sec / 60);
+  return m < 60 ? m + " мин" : Math.floor(m/60) + " ч " + (m%60) + " м";
+}
 
-async function load(){
-  try{
-    const r = await fetch("data.json?ts=" + Date.now());
-    const d = await r.json();
-    const sobran = new Date(d.sobran.replace(" ", "T"));
-    const minAgo = Math.round((Date.now() - sobran.getTime()) / 60000);
-    const fresh = minAgo <= 10;
-    document.getElementById("status").innerHTML =
-      (d.bot_zhiv ? '<span class="badge b-ok">бот работает</span>'
-                  : '<span class="badge b-bad">БОТ ОСТАНОВЛЕН</span>') +
-      ' <span class="badge ' + (fresh ? "b-ok" : "b-bad") + '">данные: ' +
-      d.sobran.slice(11,16) + (fresh ? "" : " · СТАРЫЕ (" + minAgo + " мин)") + "</span>";
+/* ───────── живая цена (Bybit WS, та же биржа, что у бота) ───────── */
+function wsConnect(symbols){
+  if (!symbols.length){ setLive(false, "нет позиций"); return; }
+  try { if (ws) ws.close(); } catch(e){}
+  ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
+  ws.onopen = () => {
+    ws.send(JSON.stringify({op:"subscribe", args:symbols.map(s => "tickers." + s)}));
+    setLive(true, "прямой эфир");
+  };
+  ws.onmessage = ev => {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m.topic && m.topic.startsWith("tickers.") && m.data){
+        const p = parseFloat(m.data.lastPrice);
+        if (p) { live[m.data.symbol] = p; renderPositionsLive(); }
+      }
+    } catch(e){}
+  };
+  ws.onclose = () => { setLive(false, "эфир оборван"); setTimeout(() => { if (D && D.pozicii.length) wsConnect(D.pozicii.map(p=>p.symbol)); }, 5000); };
+  ws.onerror = () => setLive(false, "эфир недоступен");
+}
+function setLive(ok, txt){
+  wsOK = ok;
+  const b = $("liveBadge");
+  b.className = "badge " + (ok ? "b-ok" : "b-dim");
+  b.innerHTML = '<span class="dot' + (ok ? " pulse" : "") + '"></span>' + txt;
+}
 
-    document.getElementById("balance").textContent = d.balance != null ? d.balance.toFixed(2) + "$" : "—";
-    const s = d.segodnya, w = d.nedelya;
-    const te = document.getElementById("today");
-    te.textContent = money(s.usd) + " · " + s.n + " сд.";
-    te.className = "v " + cls(s.usd);
-    const we = document.getElementById("week");
-    we.textContent = money(w.usd) + " · " + w.n + " сд.";
-    we.className = "v " + cls(w.usd);
-    document.getElementById("npos").textContent = d.pozicii.length;
+/* ───────── шкала пути ───────── */
+function pathHTML(p, price){
+  const lon = p.direction === "long";
+  const tg = (p.targets || []).slice().sort((a,b) => lon ? a-b : b-a);
+  const far = tg.length ? tg[tg.length-1] : (p.entry * (lon ? 1.03 : 0.97));
+  // нормализация: 0 = стоп, 1 = дальняя цель; вправо = профит ВСЕГДА
+  const lo = p.stop, hi = far;
+  const span = hi - lo || 1;
+  const X = v => {
+    let x = (v - lo) / span;
+    if (!lon) x = x; // для шорта lo=stop(выше цены), hi=цель(ниже) → span<0, формула сама инвертирует
+    return Math.max(0, Math.min(1, x)) * 100;
+  };
+  const xe = X(p.entry);
+  const ticks = [];
+  ticks.push({x:0, c:"var(--red)", top:"стоп", pr:fmtP(p.stop)});
+  ticks.push({x:xe, c:"#c9d1d9", top:"вход", pr:fmtP(p.entry)});
+  tg.forEach((t,i) => ticks.push({x:X(t), c:"var(--green)", top:"цель "+(i+1), pr:fmtP(t)}));
+  const xp = price ? X(price) : null;
+  let note = "";
+  if (price){
+    const pnl = (lon ? price - p.entry : p.entry - price) / p.entry * 100;
+    if (pnl >= 0 && tg.length){
+      const t1 = tg[0];
+      const dolya = Math.max(0, Math.min(100, (price - p.entry) / (t1 - p.entry) * 100));
+      note = "в плюсе · пройдено " + dolya.toFixed(0) + "% пути до цели 1";
+    } else if (pnl < 0){
+      const dolya = Math.max(0, Math.min(100, (p.entry - price) / (p.entry - p.stop) * 100));
+      note = "в минусе · до стопа осталось " + (100 - dolya).toFixed(0) + "%";
+    }
+  }
+  return `
+  <div class="path">
+    <div class="rail">
+      <div class="zone-risk" style="width:${xe}%"></div>
+      <div class="zone-run" style="left:${xe}%; right:0"></div>
+    </div>
+    ${ticks.map(t => `<div class="tick" style="left:${t.x}%;background:${t.c}">
+        <span class="pr">${t.pr}</span><label>${t.top}</label></div>`).join("")}
+    ${xp != null ? `<div class="marker" style="left:${xp}%">
+        <span class="pr">${fmtP(price)}</span><div class="arr"></div></div>` : ""}
+  </div>
+  <div class="path-note">${note}</div>`;
+}
 
-    const pb = document.getElementById("poziciiBlock");
-    pb.style.display = d.pozicii.length ? "" : "none";
-    fill("pozicii", d.pozicii.map(p =>
-      [p.symbol, p.direction === "long" ? "лонг" : "шорт",
-       ["num", String(p.entry)], ["num", String(p.stop)]]));
-
-    fill("sdelki", s.sdelki.map(x =>
-      [x.vremya, x.symbol, x.dir === "long" ? "лонг" : "шорт", x.formation || "",
-       ["num " + cls(x.pnl_pct), (x.pnl_pct > 0 ? "+" : "") + x.pnl_pct.toFixed(2) + "%"],
-       ["num " + cls(x.usd), money(x.usd)],
-       ["exit", x.exit]]));
-
-    fill("dni", d.nedelya.dni.map(x =>
-      [x.data, ["num", String(x.n)],
-       ["num " + cls(x.usd), money(x.usd)],
-       ["num", x.wr == null ? "—" : x.wr + "%"]]));
-
-    fill("formacii", d.formacii7.map(x =>
-      [x.name, ["num", String(x.n)],
-       ["num " + cls(x.usd), money(x.usd)],
-       ["num", x.wr + "%"]]));
-  } catch(e){
-    document.getElementById("status").innerHTML =
-      '<span class="badge b-bad">нет данных: ' + e.message + "</span>";
+/* ───────── позиции ───────── */
+function renderPositions(){
+  const box = $("positions");
+  if (!D.pozicii.length){
+    box.innerHTML = '<h2>Открытые позиции</h2><div class="pos dim">сейчас позиций нет — бот ищет вход</div>';
+    return;
+  }
+  box.innerHTML = "<h2>Открытые позиции · " + D.pozicii.length + "</h2>" +
+    D.pozicii.map(p => {
+      const price = live[p.symbol] || null;
+      return `<div class="pos" id="pos-${p.symbol}">
+        <div class="pos-head">
+          <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
+          <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
+          <span class="pos-pnl dim" data-pnl>—</span>
+        </div>
+        <div class="pos-sub">${p.formation || ""} · ${p.trade_type || ""} ·
+          в позиции <span data-dur>${p.open_time ? dur(Date.now()/1000 - p.open_time) : "—"}</span>
+          · объём ${p.size ? p.size.toFixed(0) + "$" : "—"}</div>
+        <div data-path>${pathHTML(p, price)}</div>
+        <div class="pos-actions">
+          <button class="btn" onclick="toggleChart('${p.symbol}')" id="btn-${p.symbol}">📈 график</button>
+        </div>
+        <div class="chartbox" id="cb-${p.symbol}" style="display:none">
+          <div class="tfs" id="tfs-${p.symbol}"></div>
+          <div class="chart" id="chart-${p.symbol}"></div>
+        </div>
+      </div>`;
+    }).join("");
+  renderPositionsLive();
+}
+function renderPositionsLive(){
+  if (!D) return;
+  for (const p of D.pozicii){
+    const el = $("pos-" + p.symbol);
+    if (!el) continue;
+    const price = live[p.symbol];
+    if (price){
+      const pnl = (p.direction === "long" ? price - p.entry : p.entry - price) / p.entry * 100;
+      const pe = el.querySelector("[data-pnl]");
+      pe.textContent = (pnl > 0 ? "+" : "") + pnl.toFixed(2) + "%";
+      pe.className = "pos-pnl " + cls(pnl);
+      el.querySelector("[data-path]").innerHTML = pathHTML(p, price);
+    }
+    const de = el.querySelector("[data-dur]");
+    if (de && p.open_time) de.textContent = dur(Date.now()/1000 - p.open_time);
+    // live-свеча на открытом графике
+    const oc = openCharts[p.symbol];
+    if (oc && price && oc.lastBar){
+      const b = oc.lastBar;
+      b.close = price; b.high = Math.max(b.high, price); b.low = Math.min(b.low, price);
+      oc.candle.update(b);
+    }
   }
 }
-function fill(id, rows){
-  const tb = document.querySelector("#" + id + " tbody");
-  tb.innerHTML = "";
-  for(const row of rows){
-    const tr = document.createElement("tr");
-    for(const cell of row){
-      const td = document.createElement("td");
-      if(Array.isArray(cell)){ td.className = cell[0]; td.textContent = cell[1]; }
-      else td.textContent = cell;
-      tr.appendChild(td);
+
+/* ───────── графики (Bybit klines, public) ───────── */
+async function klines(sym, tf, limit, endMs){
+  let url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${sym}&interval=${tf}&limit=${limit}`;
+  if (endMs) url += "&end=" + endMs;
+  const r = await fetch(url);
+  const j = await r.json();
+  const rows = (j.result && j.result.list || []).slice().reverse();
+  return rows.map(k => ({ time: Math.floor(k[0]/1000), open:+k[1], high:+k[2], low:+k[3], close:+k[4] }));
+}
+function mkChart(el){
+  const c = LightweightCharts.createChart(el, {
+    layout:{ background:{color:"#0d1117"}, textColor:"#7d8794" },
+    grid:{ vertLines:{color:"#161b22"}, horzLines:{color:"#161b22"} },
+    timeScale:{ timeVisible:true, secondsVisible:false, borderColor:"#232a36" },
+    rightPriceScale:{ borderColor:"#232a36" },
+    crosshair:{ mode:0 },
+    localization:{ locale:"ru-RU" },
+    autoSize:true,
+  });
+  const s = c.addCandlestickSeries({
+    upColor:"#2ecc71", downColor:"#ff5252", wickUpColor:"#2ecc71",
+    wickDownColor:"#ff5252", borderVisible:false,
+  });
+  return {chart:c, candle:s};
+}
+function priceLine(series, price, color, title){
+  if (price == null) return;
+  series.createPriceLine({ price:+price, color, lineWidth:1,
+    lineStyle:LightweightCharts.LineStyle.Dashed, title });
+}
+async function toggleChart(sym){
+  const box = $("cb-" + sym), btn = $("btn-" + sym);
+  if (box.style.display !== "none"){
+    box.style.display = "none"; btn.classList.remove("active");
+    if (openCharts[sym]){ openCharts[sym].chart.remove(); delete openCharts[sym]; }
+    return;
+  }
+  box.style.display = ""; btn.classList.add("active");
+  const tfs = $("tfs-" + sym);
+  tfs.innerHTML = ["1","5","15"].map(tf =>
+    `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин</button>`).join("");
+  await loadTf(sym, "1", tfs.querySelector(".tfbtn"));
+}
+async function loadTf(sym, tf, btn){
+  if (btn){ btn.parentElement.querySelectorAll(".tfbtn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); }
+  if (openCharts[sym]){ openCharts[sym].chart.remove(); delete openCharts[sym]; }
+  const el = $("chart-" + sym); el.innerHTML = "";
+  const o = mkChart(el);
+  try {
+    const bars = await klines(sym, tf, 300);
+    o.candle.setData(bars);
+    o.lastBar = bars[bars.length-1];
+    const p = D.pozicii.find(x => x.symbol === sym);
+    if (p){
+      priceLine(o.candle, p.entry, "#c9d1d9", "вход");
+      priceLine(o.candle, p.stop, "#ff5252", "стоп");
+      (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
+      if (p.open_time){
+        o.candle.setMarkers([{ time: Math.floor(p.open_time/ (tf*60)) * tf*60,
+          position: p.direction === "long" ? "belowBar" : "aboveBar",
+          color:"#f7b731", shape:"arrowUp", text:"вход" }]);
+      }
     }
+    o.chart.timeScale().scrollToRealTime();
+  } catch(e){ el.innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
+  openCharts[sym] = o;
+}
+
+/* ───────── график-разбор закрытой сделки ───────── */
+async function dealChart(x, tr){
+  const holder = $("dealChart");
+  if (dealChartObj){ dealChartObj.chart.remove(); dealChartObj = null; }
+  holder.innerHTML = `<div class="chartbox" style="margin-top:10px">
+    <div class="tfs"><span class="dim" style="padding:2px 6px">
+      ${x.symbol} · ${x.dir === "long" ? "лонг" : "шорт"} · вход ${x.entry_time.slice(11,16)} →
+      выход ${(x.exit_time||"").slice(11,16)} · ${x.pnl_pct > 0 ? "+" : ""}${x.pnl_pct}%</span>
+      <button class="tfbtn" style="margin-left:auto" onclick="closeDealChart()">✕ закрыть</button></div>
+    <div class="chart" id="dealChartEl"></div></div>`;
+  holder.scrollIntoView({behavior:"smooth", block:"center"});
+  const o = mkChart($("dealChartEl"));
+  dealChartObj = o;
+  try {
+    const t1 = new Date(x.entry_time.replace(" ","T")).getTime();
+    const t2 = x.exit_time ? new Date(x.exit_time.replace(" ","T")).getTime() : t1 + 3600e3;
+    const utcShift = 11 * 3600e3;   // журнал в UTC+11
+    const end = t2 - utcShift + 40 * 60e3;
+    const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
+    o.candle.setData(bars);
+    priceLine(o.candle, x.entry_price, "#c9d1d9", "вход");
+    priceLine(o.candle, x.stop, "#ff5252", "стоп");
+    priceLine(o.candle, x.exit_price, "#f7b731", "выход");
+    (x.targets||[]).slice(0,3).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
+    const mt = ts => Math.floor((new Date(ts.replace(" ","T")).getTime() - utcShift)/60e3)*60;
+    const mk = [{ time:mt(x.entry_time), position: x.dir==="long"?"belowBar":"aboveBar",
+                  color:"#f7b731", shape:"arrowUp", text:"вход" }];
+    if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
+                  color: x.pnl_pct > 0 ? "#2ecc71" : "#ff5252", shape:"arrowDown", text:"выход" });
+    o.candle.setMarkers(mk);
+  } catch(e){ $("dealChartEl").innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
+}
+function closeDealChart(){
+  if (dealChartObj){ dealChartObj.chart.remove(); dealChartObj = null; }
+  $("dealChart").innerHTML = "";
+}
+
+/* ───────── сделки: сегменты дней ───────── */
+let curDay = 0;                    // 0=сегодня; -1=вчера; 7='неделя'
+function renderDaySeg(){
+  const seg = $("daySeg");
+  const mk = (label, val) =>
+    `<button class="btn${curDay===val?" active":""}" onclick="setDay(${val})">${label}</button>`;
+  seg.innerHTML = mk("Сегодня",0) + mk("Вчера",-1) + mk("7 дней",7);
+}
+function setDay(v){ curDay = v; renderDaySeg(); renderDeals(); closeDealChart(); }
+function renderDeals(){
+  const tb = document.querySelector("#sdelki tbody");
+  tb.innerHTML = "";
+  let rows = [];
+  if (curDay === 0) rows = D.segodnya.sdelki;
+  else if (curDay === -1)
+    rows = (D.arhiv_sdelki || []).filter(x => x.entry_time.slice(0,10) === D.nedelya.dni[1].data)
+           .slice().reverse();
+  else
+    rows = (D.arhiv_sdelki || []).concat(D.segodnya.sdelki.slice().reverse()).slice().reverse();
+  $("dealsTitle").textContent = "Сделки · " + rows.length;
+  for (const x of rows){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${curDay===7 ? x.entry_time.slice(5,16).replace("T"," ") : x.vremya}</td>
+      <td><b>${x.symbol.replace("USDT","")}</b></td>
+      <td><span class="side ${x.dir}">${x.dir==="long"?"Л":"Ш"}</span></td>
+      <td class="dim">${x.formation||""}</td>
+      <td class="num ${cls(x.pnl_pct)}">${x.pnl_pct>0?"+":""}${x.pnl_pct.toFixed(2)}%</td>
+      <td class="num ${cls(x.usd)}">${money(x.usd)}</td>
+      <td class="exit" title="${x.exit}">${x.exit}</td>`;
+    tr.onclick = () => dealChart(x, tr);
     tb.appendChild(tr);
   }
-  if(!rows.length){
+  if (!rows.length) tb.innerHTML = '<tr><td colspan="7" class="dim">пусто</td></tr>';
+}
+
+/* ───────── прочие блоки ───────── */
+function renderToday(){
+  const s = D.segodnya;
+  const best = s.sdelki.reduce((a,x) => x.usd > (a?a.usd:-1e9) ? x : a, null);
+  const worst = s.sdelki.reduce((a,x) => x.usd < (a?a.usd:1e9) ? x : a, null);
+  $("todayCards").innerHTML = `
+    <div class="card"><div class="t">Итог дня</div>
+      <div class="v ${cls(s.usd)}">${money(s.usd)}</div><div class="s">${s.n} сделок</div></div>
+    <div class="card"><div class="t">Винрейт</div>
+      <div class="v">${s.wr==null?"—":s.wr+"%"}</div><div class="s">доля прибыльных</div></div>
+    <div class="card"><div class="t">Неделя</div>
+      <div class="v ${cls(D.nedelya.usd)}">${money(D.nedelya.usd)}</div>
+      <div class="s">${D.nedelya.n} сделок</div></div>
+    <div class="card"><div class="t">Лучшая / худшая</div>
+      <div class="v" style="font-size:14px">
+        <span class="green">${best?best.symbol.replace("USDT","")+" "+money(best.usd):"—"}</span><br>
+        <span class="red">${worst?worst.symbol.replace("USDT","")+" "+money(worst.usd):"—"}</span>
+      </div></div>`;
+}
+function renderEquity(){
+  const el = $("equityChart"); el.innerHTML = "";
+  if (!window.LightweightCharts || !(D.equity||[]).length){
+    el.innerHTML = '<div class="dim" style="padding:16px">нет данных</div>'; return;
+  }
+  const c = LightweightCharts.createChart(el, {
+    layout:{ background:{color:"transparent"}, textColor:"#7d8794" },
+    grid:{ vertLines:{visible:false}, horzLines:{color:"#161b22"} },
+    timeScale:{ timeVisible:true, borderColor:"#232a36" },
+    rightPriceScale:{ borderColor:"#232a36" }, autoSize:true,
+    localization:{ locale:"ru-RU" },
+  });
+  const s = c.addAreaSeries({ lineColor:"#4da3ff", topColor:"rgba(77,163,255,.25)",
+                              bottomColor:"rgba(77,163,255,0)", lineWidth:2 });
+  const utcShift = 11*3600;
+  const pts = D.equity.map(p => ({ time: Math.floor(new Date(p.t.replace(" ","T")).getTime()/1000) - utcShift, value:p.b }))
+                      .filter(p => !isNaN(p.time));
+  const seen = new Set(); const uniq = [];
+  for (const p of pts){ if (!seen.has(p.time)){ seen.add(p.time); uniq.push(p); } }
+  s.setData(uniq);
+  c.timeScale().fitContent();
+}
+function barTable(id, rows, maxAbs){
+  const tb = document.querySelector("#" + id + " tbody") || document.querySelector("#" + id).createTBody();
+  tb.innerHTML = "";
+  for (const r of rows){
     const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 8; td.style.color = "var(--dim)"; td.textContent = "пусто";
-    tr.appendChild(td); tb.appendChild(tr);
+    tr.style.cursor = "default";
+    const w = maxAbs ? Math.abs(r.usd)/maxAbs*100 : 0;
+    tr.innerHTML = `<td>${r.label}</td><td class="num">${r.n}</td>
+      <td class="num">${r.wr==null?"—":r.wr+"%"}</td>
+      <td><div class="bar-wrap">
+        <div class="bar" style="width:${Math.max(2,w)}%;background:${r.usd>=0?"var(--green)":"var(--red)"}"></div>
+        <span class="${cls(r.usd)}" style="font-size:12px">${money(r.usd)}</span></div></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+/* ───────── загрузка ───────── */
+async function load(){
+  try {
+    const r = await fetch("data.json?ts=" + Date.now());
+    D = await r.json();
+    const sobran = new Date(D.sobran.replace(" ","T"));
+    const minAgo = Math.round((Date.now() - sobran)/60000);
+    const fresh = minAgo <= 10;
+    const bb = $("botBadge");
+    bb.className = "badge " + (D.bot_zhiv ? "b-ok" : "b-bad");
+    bb.innerHTML = '<span class="dot' + (D.bot_zhiv ? " pulse" : "") + '"></span>' +
+                   (D.bot_zhiv ? "бот работает" : "БОТ ОСТАНОВЛЕН");
+    const db = $("dataBadge");
+    db.className = "badge " + (fresh ? "b-dim" : "b-bad");
+    db.textContent = "данные " + D.sobran.slice(11,16) + (fresh ? "" : " · СТАРЫЕ " + minAgo + " мин");
+    $("balance").innerHTML = (D.balance!=null ? D.balance.toFixed(2) + "$" : "—") +
+                             '<small>баланс (бумага)</small>';
+    renderPositions();
+    renderToday();
+    renderDaySeg();
+    renderDeals();
+    renderEquity();
+    barTable("dni", D.nedelya.dni.map(x => ({label:x.data.slice(5), n:x.n, wr:x.wr, usd:x.usd})),
+             Math.max(...D.nedelya.dni.map(x => Math.abs(x.usd)), 1));
+    barTable("formacii", D.formacii7.map(x => ({label:x.name, n:x.n, wr:x.wr, usd:x.usd})),
+             Math.max(...D.formacii7.map(x => Math.abs(x.usd)), 1));
+    const syms = D.pozicii.map(p => p.symbol);
+    const cur = ws && ws.readyState === 1;
+    if (!cur || JSON.stringify(syms) !== (window._wsSyms||"")) {
+      window._wsSyms = JSON.stringify(syms); wsConnect(syms);
+    }
+  } catch(e){
+    $("dataBadge").className = "badge b-bad";
+    $("dataBadge").textContent = "нет данных: " + e.message;
   }
 }
 load();
 setInterval(load, 60000);
+setInterval(renderPositionsLive, 15000);   // тикает «в позиции N мин»
 </script>
 </body>
 </html>
