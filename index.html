@@ -349,6 +349,14 @@ function mkChart(el){
       s.applyOptions({priceFormat:{type:"price", precision:prec, minMove:Math.pow(10,-prec)}});
     }};
 }
+function urovniLines(series, urovni){
+  for (const u of (urovni || [])){
+    if (!u.p) continue;
+    series.createPriceLine({ price:+u.p, color:"#5a6472", lineWidth:1,
+      lineStyle:LightweightCharts.LineStyle.SparseDotted,
+      title:(u.tf||"") + (u.kas ? " ·" + u.kas + "кас" : "") });
+  }
+}
 function priceLine(series, price, color, title){
   if (price == null) return;
   series.createPriceLine({ price:+price, color, lineWidth:1,
@@ -379,6 +387,7 @@ async function loadTf(sym, tf, btn){
     o.lastBar = bars[bars.length-1];
     const p = D.pozicii.find(x => x.symbol === sym);
     if (p){
+      urovniLines(o.candle, p.urovni);
       priceLine(o.candle, p.entry, "#c9d1d9", "вход");
       priceLine(o.candle, p.stop, "#ff5252", "стоп");
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
@@ -413,6 +422,7 @@ async function dealChart(x, tr){
     const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
     if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
+    urovniLines(o.candle, x.urovni);
     priceLine(o.candle, x.entry_price, "#c9d1d9", "вход");
     priceLine(o.candle, x.stop, "#ff5252", "стоп");
     priceLine(o.candle, x.exit_price, "#f7b731", "выход");
