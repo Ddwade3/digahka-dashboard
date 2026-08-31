@@ -335,7 +335,12 @@ function mkChart(el){
     upColor:"#2ecc71", downColor:"#ff5252", wickUpColor:"#2ecc71",
     wickDownColor:"#ff5252", borderVisible:false,
   });
-  return {chart:c, candle:s};
+  return {chart:c, candle:s,
+    fmt(sample){                       // точность шкалы цены под размер цены
+      const a = Math.abs(sample || 1);
+      const prec = a >= 1000 ? 2 : a >= 10 ? 3 : a >= 0.1 ? 5 : 6;
+      s.applyOptions({priceFormat:{type:"price", precision:prec, minMove:Math.pow(10,-prec)}});
+    }};
 }
 function priceLine(series, price, color, title){
   if (price == null) return;
@@ -362,6 +367,7 @@ async function loadTf(sym, tf, btn){
   const o = mkChart(el);
   try {
     const bars = await klines(sym, tf, 300);
+    if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
     o.lastBar = bars[bars.length-1];
     const p = D.pozicii.find(x => x.symbol === sym);
@@ -399,6 +405,7 @@ async function dealChart(x, tr){
     const utcShift = 11 * 3600e3;   // журнал в UTC+11
     const end = t2 - utcShift + 40 * 60e3;
     const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
+    if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
     priceLine(o.candle, x.entry_price, "#c9d1d9", "вход");
     priceLine(o.candle, x.stop, "#ff5252", "стоп");
@@ -410,6 +417,7 @@ async function dealChart(x, tr){
     if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
                   color: x.pnl_pct > 0 ? "#2ecc71" : "#ff5252", shape:"arrowDown", text:"выход" });
     o.candle.setMarkers(mk);
+    o.chart.timeScale().fitContent();
   } catch(e){ $("dealChartEl").innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
 }
 function closeDealChart(){
