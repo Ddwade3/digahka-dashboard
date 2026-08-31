@@ -178,6 +178,13 @@ function fmtP(v){                 // цена: 5 значащих
 }
 function money(v){ return (v > 0 ? "+" : "") + v.toFixed(2) + "$"; }
 function cls(v){ return v > 0 ? "green" : (v < 0 ? "red" : "dim"); }
+// журнал ведётся в UTC+11 (Магадан) — парсим ФИКСИРОВАННО, не зависim от пояса браузера
+function jepoch(ts){                 // "2026-08-31T16:44:00" → real epoch ms
+  const m = ts.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return NaN;
+  return Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)) - 11*3600e3;
+}
+const SDVIG = 11*3600;               // показываем время на графиках магаданское (как в журнале)
 function dur(sec){
   const m = Math.floor(sec / 60);
   return m < 60 ? m + " мин" : Math.floor(m/60) + " ч " + (m%60) + " м";
@@ -319,7 +326,7 @@ async function klines(sym, tf, limit, endMs){
   const r = await fetch(url);
   const j = await r.json();
   const rows = (j.result && j.result.list || []).slice().reverse();
-  return rows.map(k => ({ time: Math.floor(k[0]/1000), open:+k[1], high:+k[2], low:+k[3], close:+k[4] }));
+  return rows.map(k => ({ time: Math.floor(k[0]/1000) + SDVIG, open:+k[1], high:+k[2], low:+k[3], close:+k[4] }));
 }
 function mkChart(el){
   const c = LightweightCharts.createChart(el, {
@@ -376,7 +383,7 @@ async function loadTf(sym, tf, btn){
       priceLine(o.candle, p.stop, "#ff5252", "стоп");
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
       if (p.open_time){
-        o.candle.setMarkers([{ time: Math.floor(p.open_time/ (tf*60)) * tf*60,
+        o.candle.setMarkers([{ time: Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60,
           position: p.direction === "long" ? "belowBar" : "aboveBar",
           color:"#f7b731", shape:"arrowUp", text:"вход" }]);
       }
@@ -400,10 +407,9 @@ async function dealChart(x, tr){
   const o = mkChart($("dealChartEl"));
   dealChartObj = o;
   try {
-    const t1 = new Date(x.entry_time.replace(" ","T")).getTime();
-    const t2 = x.exit_time ? new Date(x.exit_time.replace(" ","T")).getTime() : t1 + 3600e3;
-    const utcShift = 11 * 3600e3;   // журнал в UTC+11
-    const end = t2 - utcShift + 40 * 60e3;
+    const t1 = jepoch(x.entry_time);
+    const t2 = x.exit_time ? jepoch(x.exit_time) : t1 + 3600e3;
+    const end = t2 + 40 * 60e3;      // klines принимает реальный epoch мс
     const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
     if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
@@ -411,7 +417,7 @@ async function dealChart(x, tr){
     priceLine(o.candle, x.stop, "#ff5252", "стоп");
     priceLine(o.candle, x.exit_price, "#f7b731", "выход");
     (x.targets||[]).slice(0,3).forEach((t,i) => priceLine(o.candle, t, "#2ecc71", "цель " + (i+1)));
-    const mt = ts => Math.floor((new Date(ts.replace(" ","T")).getTime() - utcShift)/60e3)*60;
+    const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/60)*60;
     const mk = [{ time:mt(x.entry_time), position: x.dir==="long"?"belowBar":"aboveBar",
                   color:"#f7b731", shape:"arrowUp", text:"вход" }];
     if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
@@ -493,8 +499,7 @@ function renderEquity(){
   });
   const s = c.addAreaSeries({ lineColor:"#4da3ff", topColor:"rgba(77,163,255,.25)",
                               bottomColor:"rgba(77,163,255,0)", lineWidth:2 });
-  const utcShift = 11*3600;
-  const pts = D.equity.map(p => ({ time: Math.floor(new Date(p.t.replace(" ","T")).getTime()/1000) - utcShift, value:p.b }))
+  const pts = D.equity.map(p => ({ time: Math.floor(jepoch(p.t)/1000) + SDVIG, value:p.b }))
                       .filter(p => !isNaN(p.time));
   const seen = new Set(); const uniq = [];
   for (const p of pts){ if (!seen.has(p.time)){ seen.add(p.time); uniq.push(p); } }
