@@ -549,7 +549,9 @@ async function load(){
     db.textContent = "данные " + D.sobran.slice(11,16) + (fresh ? "" : " · СТАРЫЕ " + minAgo + " мин");
     $("balance").innerHTML = (D.balance!=null ? D.balance.toFixed(2) + "$" : "—") +
                              '<small>баланс (бумага)</small>';
-    renderPositions();
+    const posKey = JSON.stringify(D.pozicii.map(p => [p.symbol, p.entry, p.stop, (p.urovni||[]).length]));
+    if (posKey !== window._posKey){ window._posKey = posKey; renderPositions(); }
+    else renderPositionsLive();
     renderToday();
     renderDaySeg();
     renderDeals();
