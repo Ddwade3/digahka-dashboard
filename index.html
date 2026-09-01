@@ -415,8 +415,6 @@ async function loadTf(sym, tf, btn){
       // показываем до 3 ближних уровней бота серым + честную пометку.
       const oznEst = (p.osnovnye || []).some(z => z.storona === oznuzh);
       if (!oznEst){
-        (p.urovni || []).slice(0, 3).forEach(u =>
-          priceLine(o.candle, u.p, "#8a93a6", "уровень бота" + (u.kas > 1 ? "·" + u.kas : ""), false));
         const pl = document.createElement("div");
         pl.style.cssText = "font-size:11px;color:#8a93a6;padding:2px 6px";
         pl.textContent = "каскада уровней в окне нет — цель по формации";
