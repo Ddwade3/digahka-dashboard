@@ -403,19 +403,23 @@ async function loadTf(sym, tf, btn){
       // ОСНОВНЫЕ — отрезками ОТ ЗАРОЖДЕНИЯ (как сервис), только сторона сделки
       const oznuzh = (p.direction === "long") ? "R" : "S";
       const lastT = bars.length ? bars[bars.length-1].time : null;
-      for (const oz of (p.osnovnye || [])){
-        if (oz.storona !== oznuzh) continue;
+      const mySide = (p.osnovnye || []).filter(z => z.storona === oznuzh)
+        .sort((a,b) => (p.direction === "long") ? a.p - b.p : b.p - a.p);
+      mySide.forEach((oz, i) => {
+        const fin = (i === mySide.length - 1);
+        const nm = "УРОВЕНЬ " + (i+1) + (oz.stupeney > 1 ? " ·" + oz.stupeney + " кас" : "")
+                 + (fin ? " · ФИНАЛ" : "") + " → пробить";
         if (oz.rozhdenie_ts && lastT){
           const t0 = Math.floor(oz.rozhdenie_ts/1000) + SDVIG;
-          const ls = o.chart.addLineSeries({ color:"#e8c34a", lineWidth:2,
-            priceLineVisible:false, lastValueVisible:true,
-            title:"ОСНОВНОЙ" + (oz.stupeney > 1 ? "·" + oz.stupeney : "") });
+          const ls = o.chart.addLineSeries({ color: fin ? "#2ecc71" : "#e8c34a",
+            lineWidth: fin ? 3 : 2, priceLineVisible:false, lastValueVisible:true,
+            title: nm });
           ls.setData([{time: Math.max(t0, bars[0].time), value: oz.p},
                       {time: lastT, value: oz.p}]);
         } else {
-          priceLine(o.candle, oz.p, "#e8c34a", "ОСНОВНОЙ", true);
+          priceLine(o.candle, oz.p, fin ? "#2ecc71" : "#e8c34a", nm, true);
         }
-      }
+      });
       // 01.09 Сергей («хочу видеть уровни, которые бот собрался пробивать»):
       // когда ОСНОВНЫХ-каскада нет (в окне всё переписано), график был голым —
       // показываем до 3 ближних уровней бота серым + честную пометку.
@@ -435,8 +439,10 @@ async function loadTf(sym, tf, btn){
         if (za){ stopPodpis = "стоп · за лоем " + u.p; break; }
       }
       priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
-      (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
-          "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
+      if (!mySide.length){
+        (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
+            "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
+      }
       if (p.open_time){
         const vt = Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60;
         vertLine(o, vt, bars, "rgba(46,204,113,0.6)");
