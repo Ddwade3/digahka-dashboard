@@ -421,13 +421,20 @@ async function loadTf(sym, tf, btn){
         el.parentElement.insertBefore(pl, el);
       }
       priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
-      priceLine(o.candle, p.stop, "#ff5252", "стоп", true);
+      let stopPodpis = "стоп";
+      for (const u of (p.urovni || [])){
+        const za = (p.direction === "long")
+          ? (u.p >= p.stop && u.p <= p.stop * 1.006)
+          : (u.p <= p.stop && u.p >= p.stop * 0.994);
+        if (za){ stopPodpis = "стоп · за лоем " + u.p; break; }
+      }
+      priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
           "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
       if (p.open_time){
         o.candle.setMarkers([{ time: Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60,
           position: p.direction === "long" ? "belowBar" : "aboveBar",
-          color:"#f7b731", shape:"arrowUp", text:"вход" }]);
+          color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" }]);
       }
     }
     o.chart.timeScale().scrollToRealTime();
@@ -463,9 +470,9 @@ async function dealChart(x, tr){
         "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : ""), true));
     const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/60)*60;
     const mk = [{ time:mt(x.entry_time), position: x.dir==="long"?"belowBar":"aboveBar",
-                  color:"#f7b731", shape:"arrowUp", text:"вход" }];
+                  color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" }];
     if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
-                  color: x.pnl_pct > 0 ? "#2ecc71" : "#ff5252", shape:"arrowDown", text:"выход" });
+                  color:"#ff5252", shape:"arrowDown", size: 2, text:"ВЫХОД" });
     o.candle.setMarkers(mk);
     o.chart.timeScale().fitContent();
   } catch(e){ $("dealChartEl").innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
