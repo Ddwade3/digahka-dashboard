@@ -382,6 +382,12 @@ async function toggleChart(sym){
     `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин</button>`).join("");
   await loadTf(sym, "1", tfs.querySelector(".tfbtn"));
 }
+function vertLine(o, t, bars, color){
+  const lo = Math.min(...bars.map(b => b.low)), hi = Math.max(...bars.map(b => b.high));
+  const vs = o.chart.addLineSeries({ color, lineWidth: 1, lineStyle: 2,
+    priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  vs.setData([{ time: t, value: lo }, { time: t + 1, value: hi }]);
+}
 async function loadTf(sym, tf, btn){
   if (btn){ btn.parentElement.querySelectorAll(".tfbtn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); }
   if (openCharts[sym]){ openCharts[sym].chart.remove(); delete openCharts[sym]; }
@@ -432,7 +438,9 @@ async function loadTf(sym, tf, btn){
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
           "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
       if (p.open_time){
-        o.candle.setMarkers([{ time: Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60,
+        const vt = Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60;
+        vertLine(o, vt, bars, "rgba(46,204,113,0.6)");
+        o.candle.setMarkers([{ time: vt,
           position: p.direction === "long" ? "belowBar" : "aboveBar",
           color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" }]);
       }
