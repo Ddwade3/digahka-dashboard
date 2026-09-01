@@ -410,8 +410,18 @@ async function loadTf(sym, tf, btn){
           priceLine(o.candle, oz.p, "#e8c34a", "ОСНОВНОЙ", true);
         }
       }
-      // 02.09 Сергей: локальные уровни с графика УБРАНЫ («остальное — не воспринимать»);
-      // остаются: вход/стоп/цели + ОСНОВНЫЕ отрезками от зарождения
+      // 01.09 Сергей («хочу видеть уровни, которые бот собрался пробивать»):
+      // когда ОСНОВНЫХ-каскада нет (в окне всё переписано), график был голым —
+      // показываем до 3 ближних уровней бота серым + честную пометку.
+      const oznEst = (p.osnovnye || []).some(z => z.storona === oznuzh);
+      if (!oznEst){
+        (p.urovni || []).slice(0, 3).forEach(u =>
+          priceLine(o.candle, u.p, "#8a93a6", "уровень бота" + (u.kas > 1 ? "·" + u.kas : ""), false));
+        const pl = document.createElement("div");
+        pl.style.cssText = "font-size:11px;color:#8a93a6;padding:2px 6px";
+        pl.textContent = "каскада уровней в окне нет — цель по формации";
+        el.parentElement.insertBefore(pl, el);
+      }
       priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
       priceLine(o.candle, p.stop, "#ff5252", "стоп", true);
       (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
