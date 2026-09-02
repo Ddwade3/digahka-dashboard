@@ -277,9 +277,10 @@ function renderPositions(){
         <div class="pos-head">
           <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
           <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
+          ${p.bezubytok ? '<span class="side long" title="стоп переведён на вход или лучше">🛡 В БЕЗУБЫТКЕ · защищена</span>' : ""}
           <span class="pos-pnl dim" data-pnl>—</span>
         </div>
-        <div class="pos-sub">${p.formation || ""} · ${p.trade_type || ""} ·
+        <div class="pos-sub">${imyaFormacii(p.formation)} · ${p.trade_type === "pull" ? "ведение: тянуть по уровням" : (p.trade_type === "impulse" ? "ведение: импульс" : (p.trade_type || ""))} ·
           в позиции <span data-dur>${p.open_time ? dur(Date.now()/1000 - p.open_time) : "—"}</span>
           · объём ${p.size ? p.size.toFixed(0) + "$" : "—"}</div>
         <div data-path>${pathHTML(p, price)}</div>
@@ -293,6 +294,19 @@ function renderPositions(){
       </div>`;
     }).join("");
   renderPositionsLive();
+}
+function imyaFormacii(f){
+  const t = String(f || "");
+  if (t.includes("accumulation_structure_break")) return "слом структуры (через набор)";
+  if (t.includes("structure_break")) return "слом структуры";
+  if (t.includes("cascade")) return "пробой каскада";
+  if (t.includes("consolidation")) return "проторговка";
+  if (t.includes("level_break")) return "пробой уровня";
+  if (t.includes("level_bounce")) return "отбой от уровня";
+  if (t.includes("box_sweep") || t.includes("sweep")) return "снятие ликвидности";
+  if (t.includes("density")) return "отбой от плотности";
+  if (t.includes("trendline")) return "наклонная";
+  return t || "формация";
 }
 function renderPositionsLive(){
   if (!D) return;
@@ -423,22 +437,29 @@ async function loadTf(sym, tf, btn){
       // 01.09 Сергей («хочу видеть уровни, которые бот собрался пробивать»):
       // когда ОСНОВНЫХ-каскада нет (в окне всё переписано), график был голым —
       // показываем до 3 ближних уровней бота серым + честную пометку.
-      const oznEst = (p.osnovnye || []).some(z => z.storona === oznuzh);
-      if (!oznEst){
-        const pl = document.createElement("div");
-        pl.style.cssText = "font-size:11px;color:#8a93a6;padding:2px 6px";
-        pl.textContent = "каскада уровней в окне нет — цель по формации";
-        el.parentElement.insertBefore(pl, el);
-      }
-      priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
+
+      // 02.09 V-101 (Сергей: «вход/стоп висят в воздухе через весь график»):
+      // рисуем ОТРЕЗКАМИ от момента входа — как на разметке парня.
+      const t_vh = p.open_time ? Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60 : null;
+      const lastT2 = bars.length ? bars[bars.length-1].time : null;
       let stopPodpis = "стоп";
       for (const u of (p.urovni || [])){
         const za = (p.direction === "long")
           ? (u.p >= p.stop && u.p <= p.stop * 1.006)
           : (u.p <= p.stop && u.p >= p.stop * 0.994);
-        if (za){ stopPodpis = "стоп · за лоем " + u.p; break; }
+        if (za){ stopPodpis = "стоп · спрятан за " + u.p; break; }
       }
-      priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
+      if (t_vh && lastT2 && t_vh < lastT2){
+        const lv = o.chart.addLineSeries({ color:"#c9d1d9", lineWidth:1, lineStyle:2,
+          priceLineVisible:false, lastValueVisible:true, title:"вход" });
+        lv.setData([{time:Math.max(t_vh,bars[0].time), value:p.entry},{time:lastT2, value:p.entry}]);
+        const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
+          priceLineVisible:false, lastValueVisible:true, title:stopPodpis });
+        lstp.setData([{time:Math.max(t_vh,bars[0].time), value:p.stop},{time:lastT2, value:p.stop}]);
+      } else {
+        priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
+        priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
+      }
       if (!mySide.length){
         (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
             "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
