@@ -463,9 +463,23 @@ async function loadTf(sym, tf, btn){
         const lv = o.chart.addLineSeries({ color:"#c9d1d9", lineWidth:1, lineStyle:2,
           priceLineVisible:false, lastValueVisible:true, title:"вход" });
         lv.setData([{time:Math.max(t_vh,bars[0].time), value:p.entry},{time:lastT2, value:p.entry}]);
-        const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
-          priceLineVisible:false, lastValueVisible:true, title:stopPodpis });
-        lstp.setData([{time:Math.max(t_vh,bars[0].time), value:p.stop},{time:lastT2, value:p.stop}]);
+        // 02.09 схема Сергея: СПЛОШНАЯ = структурный стоп (за структурой),
+        // ПУНКТИР ниже = стоп с запасом (риск 1% считается по нему).
+        const t0s = Math.max(t_vh, bars[0].time);
+        const raznye = p.stop_struct && Math.abs(p.stop_struct - p.stop) / p.stop > 0.0005;
+        if (raznye){
+          const lss = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2,
+            priceLineVisible:false, lastValueVisible:true,
+            title:"структурный стоп · " + stopPodpis.replace("стоп · ","") });
+          lss.setData([{time:t0s, value:p.stop_struct},{time:lastT2, value:p.stop_struct}]);
+          const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
+            priceLineVisible:false, lastValueVisible:true, title:"стоп с запасом · риск 1%" });
+          lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
+        } else {
+          const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
+            priceLineVisible:false, lastValueVisible:true, title:stopPodpis });
+          lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
+        }
       } else {
         priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
         priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
