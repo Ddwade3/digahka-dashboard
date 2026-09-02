@@ -419,10 +419,20 @@ async function loadTf(sym, tf, btn){
       const lastT = bars.length ? bars[bars.length-1].time : null;
       const mySide = (p.osnovnye || []).filter(z => z.storona === oznuzh)
         .sort((a,b) => (p.direction === "long") ? a.p - b.p : b.p - a.p);
+      const t_vh0 = p.open_time ? Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60 : null;
       mySide.forEach((oz, i) => {
         const fin = (i === mySide.length - 1);
+        // 02.09 (Сергей, скрин ACE): после входа цена могла уровень УЖЕ пробить —
+        // подпись обязана это показывать, а не вечное «пробить».
+        let probit = false;
+        if (t_vh0){
+          for (const bb of bars){
+            if (bb.time < t_vh0) continue;
+            if (p.direction === "long" ? bb.high > oz.p : bb.low < oz.p){ probit = true; break; }
+          }
+        }
         const nm = "УРОВЕНЬ " + (i+1) + (oz.stupeney > 1 ? " ·" + oz.stupeney + " кас" : "")
-                 + (fin ? " · ФИНАЛ" : "") + " → пробить";
+                 + (fin ? " · ФИНАЛ" : "") + (probit ? " · ✅ ПРОБИТ" : " → пробить");
         if (oz.rozhdenie_ts && lastT){
           const t0 = Math.floor(oz.rozhdenie_ts/1000) + SDVIG;
           const ls = o.chart.addLineSeries({ color: fin ? "#2ecc71" : "#e8c34a",
