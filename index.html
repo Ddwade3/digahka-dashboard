@@ -513,8 +513,18 @@ async function loadTf(sym, tf, btn){
         otrezok(o, bars, p.stop, bars[0].time, "#ff5252", 2, 0, stopPodpis);
       }
       if (!mySide.length){
-        (p.targets||[]).forEach((t,i) => otrezok(o, bars, t, t_vh || bars[0].time, "#2ecc71", 2, 0,
-            "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : "")));
+        // 🟥 10.09 (Сергей: «уровни исчезли»): когда основных-каскада нет, график позиции был БЕЗ уровней вовсе —
+        // уровни бота (p.urovni) сюда не выводились, а «уровнями» выглядели бесконечные линии целей. Теперь уровни
+        // бота рисуются от своей точки зарождения с кружком; цель, совпавшая с уровнем, тянется от его зарождения.
+        const urP = (p.urovni || []).filter(u => u.rozhdenie_ts);
+        urP.slice(0, 8).forEach(u => urovenOtZarozhdeniya(o, bars, u, "#9aa4b2", 1, 0,
+          "уровень" + ((u.kas || 0) >= 2 ? " · " + u.kas + " кас" : ""), tf*60, markery));
+        (p.targets||[]).forEach((t,i) => {
+          const nm = "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : "");
+          const u = urP.find(v => t && Math.abs(v.p - t) / t < 0.0015);
+          if (u) urovenOtZarozhdeniya(o, bars, { p: t, rozhdenie_ts: u.rozhdenie_ts }, "#2ecc71", 2, 0, nm, tf*60, markery);
+          else otrezok(o, bars, t, t_vh || bars[0].time, "#2ecc71", 2, 0, nm);
+        });
       }
       if (p.open_time){
         const vt = Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60;
