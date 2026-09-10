@@ -220,35 +220,38 @@ function setLive(ok, txt){
 
 /* ───────── шкала пути ───────── */
 function pathHTML(p, price){
+  // 🟥 10.09 (Сергей): шкала начинается от НАЧАЛЬНОГО стопа — после переноса стопа не пропадает, где он был;
+  // «стоп был» — бледная отметка, «стоп сейчас» — яркая, с временем и причиной переноса.
   const lon = p.direction === "long";
   const tg = (p.targets || []).slice().sort((a,b) => lon ? a-b : b-a);
   const far = tg.length ? tg[tg.length-1] : (p.entry * (lon ? 1.03 : 0.97));
-  // нормализация: 0 = стоп, 1 = дальняя цель; вправо = профит ВСЕГДА
-  const lo = p.stop, hi = far;
+  const st0 = p.stop_nachalnyy || p.stop;
+  const lo = st0, hi = far;
   const span = hi - lo || 1;
-  const X = v => {
-    let x = (v - lo) / span;
-    if (!lon) x = x; // для шорта lo=stop(выше цены), hi=цель(ниже) → span<0, формула сама инвертирует
-    return Math.max(0, Math.min(1, x)) * 100;
-  };
+  const X = v => Math.max(0, Math.min(1, (v - lo) / span)) * 100;
   const xe = X(p.entry);
+  const peren = p.stop && st0 && Math.abs(p.stop - st0) / st0 > 0.0005;
   const ticks = [];
-  ticks.push({x:0, c:"var(--red)", top:"стоп", pr:fmtP(p.stop)});
+  ticks.push({x:0, c: peren ? "rgba(255,82,82,0.35)" : "var(--red)", top: peren ? "стоп был" : "стоп", pr:fmtP(st0)});
   ticks.push({x:xe, c:"#c9d1d9", top:"вход", pr:fmtP(p.entry)});
+  if (peren) ticks.push({x:X(p.stop), c:"var(--red)", top:"стоп сейчас", pr:fmtP(p.stop)});
   tg.forEach((t,i) => ticks.push({x:X(t), c:"var(--green)", top:"цель "+(i+1), pr:fmtP(t)}));
   const xp = price ? X(price) : null;
   let note = "";
   if (price){
     const pnl = (lon ? price - p.entry : p.entry - price) / p.entry * 100;
     if (pnl >= 0 && tg.length){
-      const t1 = tg[0];
-      const dolya = Math.max(0, Math.min(100, (price - p.entry) / (t1 - p.entry) * 100));
+      const dolya = Math.max(0, Math.min(100, (price - p.entry) / (tg[0] - p.entry) * 100));
       note = "в плюсе · пройдено " + dolya.toFixed(0) + "% пути до цели 1";
     } else if (pnl < 0){
       const dolya = Math.max(0, Math.min(100, (p.entry - price) / (p.entry - p.stop) * 100));
       note = "в минусе · до стопа осталось " + (100 - dolya).toFixed(0) + "%";
     }
   }
+  const ist = (p.stop_istoriya || []).map(h => {
+    const t = h.t_ms ? new Date(h.t_ms + SDVIG*1000).toISOString().slice(11,16) : "";
+    return "стоп перенесён " + t + " → " + fmtP(h.stop) + (h.prichina ? " (" + h.prichina.replace(/\s*\(KR.*$/,"") + ")" : "");
+  });
   return `
   <div class="path">
     <div class="rail">
@@ -260,7 +263,37 @@ function pathHTML(p, price){
     ${xp != null ? `<div class="marker" style="left:${xp}%">
         <span class="pr">${fmtP(price)}</span><div class="arr"></div></div>` : ""}
   </div>
-  <div class="path-note">${note}</div>`;
+  <div class="path-note">${note}${ist.length ? " · " + ist.join(" · ") : ""}</div>`;
+}
+
+/* 🟥 10.09 ЦИФРЫ СДЕЛКИ ПОНЯТНО (Сергей: «не понятно, процент это или прибыль; хочу видеть соотношение план и сейчас,
+   прибыль сейчас и планируемую»). Деньги = объём × ход цены (как в pravda.py). Риск $ — записан ботом на входе.
+   Соотношение сейчас = прибыль сейчас / риск на входе; план = до цели по начальному стопу. */
+function metrikiHTML(p, price){
+  const lon = p.direction === "long";
+  const sz = +p.size || 0, st0 = p.stop_nachalnyy || p.stop, e = +p.entry;
+  const hod = v => (lon ? v - e : e - v) / e;                  // ход цены в долях, «+» = в нашу сторону
+  const riskUsd = p.risk_usd || (sz * Math.abs(e - st0) / e);
+  const tg = (p.targets || []).slice().sort((a,b) => lon ? a-b : b-a);
+  const usd = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + " $";
+  const rr = v => "1 : " + (v).toFixed(1);
+  const pnlUsd = price ? sz * hod(price) : null;
+  const planUsd1 = tg.length ? sz * hod(tg[0]) : null;
+  const planUsdF = tg.length ? sz * hod(tg[tg.length-1]) : null;
+  const zashitaUsd = sz * hod(p.stop);                          // что забираем, если выбьет по текущему стопу
+  const tile = (t, v, sub, c) => `<div class="card"><div class="t">${t}</div><div class="v ${c||""}">${v}</div><div class="s">${sub}</div></div>`;
+  return `<div class="cards" style="margin-top:14px">
+    ${tile("прибыль сейчас", pnlUsd == null ? "—" : usd(pnlUsd), price ? ((hod(price)*100 >= 0 ? "+" : "") + (hod(price)*100).toFixed(2) + "% цены · объём " + sz.toFixed(0) + " $") : "ждём цену", pnlUsd == null ? "" : cls(pnlUsd))}
+    ${tile("соотношение сейчас", pnlUsd == null || !riskUsd ? "—" : rr(pnlUsd / riskUsd),
+           tg.length && riskUsd ? "план " + rr(planUsd1 / riskUsd) + " до цели 1 · " + rr(planUsdF / riskUsd) + " до финала" : "")}
+    ${tile("план прибыли", planUsd1 == null ? "—" : usd(planUsd1), planUsdF == null ? "" : "до цели 1 · " + usd(planUsdF) + " до финала", "green")}
+    ${tile("стоп", fmtP(p.stop), (Math.abs(p.stop - st0)/st0 > 0.0005 ? "был " + fmtP(st0) + " (" + usd(-riskUsd) + ") · " : "риск " + usd(-riskUsd) + " · ")
+           + (zashitaUsd >= 0 ? "защищено " + usd(zashitaUsd) : "при стопе " + usd(zashitaUsd)), zashitaUsd >= 0 ? "green" : "red")}
+  </div>`;
+}
+function imyaVida(ist){
+  const m = String(ist || "").match(/shema_v(\d)/);
+  return m ? " · вид " + m[1] : "";
 }
 
 /* ───────── позиции ───────── */
@@ -277,12 +310,14 @@ function renderPositions(){
         <div class="pos-head">
           <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
           <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
+          ${p.tf_formacii ? `<span class="side" style="background:#1b2533;color:#8fb8ff" title="таймфрейм, на котором бот нашёл формацию и отметил уровни">🔎 найдено на ${p.tf_formacii} мин</span>` : ""}
           ${p.bezubytok ? '<span class="side long" title="стоп переведён на вход или лучше">🛡 В БЕЗУБЫТКЕ · защищена</span>' : ""}
           <span class="pos-pnl dim" data-pnl>—</span>
         </div>
-        <div class="pos-sub">${imyaFormacii(p.formation)} · ${p.trade_type === "pull" ? "ведение: тянуть по уровням" : (p.trade_type === "impulse" ? "ведение: импульс" : (p.trade_type || ""))} ·
+        <div class="pos-sub">${imyaFormacii(p.formation)}${imyaVida(p.istochnik)} · ${p.trade_type === "pull" ? "ведение: тянуть по уровням" : (p.trade_type === "impulse" ? "ведение: импульс" : (p.trade_type || ""))} ·
           в позиции <span data-dur>${p.open_time ? dur(Date.now()/1000 - p.open_time) : "—"}</span>
           · объём ${p.size ? p.size.toFixed(0) + "$" : "—"}</div>
+        <div data-metrics>${metrikiHTML(p, price)}</div>
         <div data-path>${pathHTML(p, price)}</div>
         <div class="pos-actions">
           <button class="btn" onclick="toggleChart('${p.symbol}')" id="btn-${p.symbol}">📈 график</button>
@@ -317,9 +352,12 @@ function renderPositionsLive(){
     if (price){
       const pnl = (p.direction === "long" ? price - p.entry : p.entry - price) / p.entry * 100;
       const pe = el.querySelector("[data-pnl]");
-      pe.textContent = (pnl > 0 ? "+" : "") + pnl.toFixed(2) + "%";
+      const pnlUsd = (+p.size || 0) * pnl / 100;
+      pe.innerHTML = (pnlUsd >= 0 ? "+" : "−") + Math.abs(pnlUsd).toFixed(2) + " $"
+        + ` <span style="font-size:13px;font-weight:500;opacity:.75">${pnl > 0 ? "+" : ""}${pnl.toFixed(2)}% цены</span>`;
       pe.className = "pos-pnl " + cls(pnl);
       el.querySelector("[data-path]").innerHTML = pathHTML(p, price);
+      const me = el.querySelector("[data-metrics]"); if (me) me.innerHTML = metrikiHTML(p, price);
     }
     const de = el.querySelector("[data-dur]");
     if (de && p.open_time) de.textContent = dur(Date.now()/1000 - p.open_time);
@@ -426,13 +464,15 @@ async function toggleChart(sym){
   box.style.display = ""; btn.classList.add("active");
   const tfs = $("tfs-" + sym);
   tfs.innerHTML = ["1","5","15"].map(tf =>
-    `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин</button>`).join("");
+    `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин${(D.pozicii.find(x => x.symbol === sym)||{}).tf_formacii === tf ? " ★ формация" : ""}</button>`).join("");
   // 🟥 10.09 (Сергей: «не вижу, куда бот целится»): график открывается на самом мелком ТФ, в окно которого
   // (до 1400 свечей) влезает самая ранняя точка зарождения целей и уровней позиции — иначе цель начинается с края.
   const pp = D.pozicii.find(x => x.symbol === sym);
   const rz = pp ? [...(pp.celi || []), ...(pp.osnovnye || []), ...(pp.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
   const vozrastMin = rz.length ? (Date.now() - Math.min(...rz)) / 60e3 : 0;
-  const tfStart = ["1","5","15"].find(t => vozrastMin / (+t) <= 1400) || "15";
+  // 10.09 (Сергей: «хочу видеть, на каком ТФ найдена формация»): открываем на ТФ формации, кнопка помечена ★
+  const tfStart = (pp && ["1","5","15"].includes(String(pp.tf_formacii))) ? String(pp.tf_formacii)
+                : (["1","5","15"].find(t => vozrastMin / (+t) <= 1400) || "15");
   const knopki = [...tfs.querySelectorAll(".tfbtn")];
   knopki.forEach(b => b.classList.toggle("active", b.textContent.trim().startsWith(tfStart + " ")));
   await loadTf(sym, tfStart, knopki.find(b => b.textContent.trim().startsWith(tfStart + " ")));
@@ -512,9 +552,24 @@ async function loadTf(sym, tf, btn){
             priceLineVisible:false, lastValueVisible:true, title:"стоп с запасом · риск 1%" });
           lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
         } else {
-          const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
-            priceLineVisible:false, lastValueVisible:true, title:stopPodpis });
-          lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
+          const st0 = p.stop_nachalnyy || p.stop;
+          const h1 = (p.stop_istoriya || [])[0];
+          const t_per = h1 && h1.t_ms ? Math.floor((h1.t_ms/1000 + SDVIG) / (tf*60)) * tf*60 : null;
+          if (st0 && Math.abs(st0 - p.stop) / st0 > 0.0005 && t_per && t_per > t0s){
+            // стоп был перенесён: начальный — бледный пунктир до момента переноса, текущий — от переноса
+            const l0 = o.chart.addLineSeries({ color:"rgba(255,82,82,0.35)", lineWidth:2, lineStyle:2,
+              priceLineVisible:false, lastValueVisible:true, title:"стоп был" });
+            l0.setData([{time:t0s, value:st0},{time:Math.min(t_per, lastT2), value:st0}]);
+            if (t_per < lastT2){
+              const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
+                priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · перенесён" });
+              l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
+            }
+          } else {
+            const lstp = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:2,
+              priceLineVisible:false, lastValueVisible:true, title:stopPodpis });
+            lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
+          }
         }
       } else {
         otrezok(o, bars, p.entry, bars[0].time, "#c9d1d9", 2, 0, "вход");
