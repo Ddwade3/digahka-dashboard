@@ -553,8 +553,10 @@ async function loadTf(sym, tf, btn){
       const oznuzh = (p.direction === "long") ? "R" : "S";
       const lastT = bars.length ? bars[bars.length-1].time : null;
       const markery = [];                 // кружки зарождения + ВХОД — ставятся одним setMarkers
-      const mySide = (p.osnovnye || []).filter(z => z.storona === oznuzh)
-        .sort((a,b) => (p.direction === "long") ? a.p - b.p : b.p - a.p);
+      // 🟥 11.09 (Сергей, ZEC: «не вижу уровней, куда бот заходит, где его цели»): уровни сервиса на 1м (osnovnye) рисовались
+      // ВМЕСТО целей бота — у ZEC это 1166.04/1156.28, рождённые за минуты до входа (на 15м отрезок в одну свечу, не видно),
+      // и они не цели бота. Теперь на графике позиции ВСЕГДА цели бота от точки зарождения; основные сервиса отдельно не рисуем.
+      const mySide = [];
       const t_vh0 = p.open_time ? Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60 : null;
       mySide.forEach((oz, i) => {
         const fin = (i === mySide.length - 1);
