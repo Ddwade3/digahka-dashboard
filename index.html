@@ -224,6 +224,22 @@ function setLive(ok, txt){
 }
 
 /* ───────── шкала пути ───────── */
+/* 11.09 (Сергей: «стоп перенесли в плюс — хочу видеть, какая прибыль зафиксируется, если выбьет; это уже не безубыток»).
+   Режим — по ТЕКУЩЕМУ стопу относительно входа: за входом в сторону прибыли — «стоп в плюсе», на входе (±0.05% цены) —
+   «безубыток», иначе — риск. Деньги = объём × ход цены до стопа (как в pravda.py). */
+function rezhimStopa(p){
+  const lon = p.direction === "long", e = +p.entry, s = +p.stop, sz = +p.size || 0;
+  const hodSt = e ? (lon ? s - e : e - s) / e : 0;
+  const usd = sz * hodSt;
+  const den = (usd >= 0 ? "+" : "−") + Math.abs(usd).toFixed(2) + " $";
+  const proc = (hodSt >= 0 ? "+" : "−") + Math.abs(hodSt * 100).toFixed(2) + "%";
+  if (hodSt > 0.0005) return {kod:"plus", usd, den, proc, slovo:"зафиксирую прибыль",
+                              plashka:"🔒 СТОП В ПЛЮСЕ · выбьет → " + den, podpis:"выбьет → " + den};
+  if (hodSt >= -0.0005) return {kod:"bu", usd, den, proc, slovo:"безубыток",
+                              plashka:"🛡 БЕЗУБЫТОК · выбьет → 0 $", podpis:"безубыток"};
+  return {kod:"risk", usd, den, proc, slovo:"убыток", plashka:"", podpis:"выбьет → " + den};
+}
+
 function pathHTML(p, price){
   // 🟥 10.09 (Сергей): шкала начинается от НАЧАЛЬНОГО стопа — после переноса стопа не пропадает, где он был;
   // «стоп был» — бледная отметка, «стоп сейчас» — яркая, с временем и причиной переноса.
@@ -268,7 +284,9 @@ function pathHTML(p, price){
     ${xp != null ? `<div class="marker" style="left:${xp}%">
         <span class="pr">${fmtP(price)}</span><div class="arr"></div></div>` : ""}
   </div>
-  <div class="path-note">${note}${ist.length ? " · " + ist.join(" · ") : ""}</div>`;
+  <div class="path-note">${(() => { const rz = rezhimStopa(p);
+      return rz.kod === "plus" ? `<b style="color:var(--green)">🔒 выбьет по стопу → зафиксирую ${rz.den} (${rz.proc} цены)</b> · `
+           : (rz.kod === "bu" ? "<b>🛡 стоп в безубытке</b> · " : ""); })()}${note}${ist.length ? " · " + ist.join(" · ") : ""}</div>`;
 }
 
 /* 🟥 10.09 ЦИФРЫ СДЕЛКИ ПОНЯТНО (Сергей: «не понятно, процент это или прибыль; хочу видеть соотношение план и сейчас,
@@ -287,15 +305,17 @@ function metrikiHTML(p, price){
   const pnlUsd = price ? sz * hod(price) : null;
   const planUsd1 = tg.length ? sz * hod(tg[0]) : null;
   const planUsdF = tg.length ? sz * hod(tg[tg.length-1]) : null;
-  const zashitaUsd = sz * hod(p.stop);                          // что забираем, если выбьет по текущему стопу
   const tile = (t, v, sub, c) => `<div class="card"><div class="t">${t}</div><div class="v ${c||""}">${v}</div><div class="s">${sub}</div></div>`;
   return `<div class="cards" style="margin-top:14px">
     ${tile("прибыль сейчас", pnlUsd == null ? "—" : usd(pnlUsd), price ? ((hod(price)*100 >= 0 ? "+" : "") + (hod(price)*100).toFixed(2) + "% цены · объём " + sz.toFixed(0) + " $") : "ждём цену", pnlUsd == null ? "" : cls(pnlUsd))}
     ${tile("соотношение сейчас", pnlUsd == null || !riskUsd ? "—" : rr(pnlUsd / riskUsd),
            tg.length && riskUsd ? "план " + rr(planUsd1 / riskUsd) + " до цели 1 · " + rr(planUsdF / riskUsd) + " до финала" : "")}
     ${tile("план прибыли", planUsd1 == null ? "—" : usd(planUsd1), planUsdF == null ? "" : "до цели 1 · " + usd(planUsdF) + " до финала", "green")}
-    ${tile("стоп", fmtP(p.stop), (Math.abs(p.stop - st0)/st0 > 0.0005 ? "был " + fmtP(st0) + " (" + usd(-riskUsd) + ") · " : "риск " + usd(-riskUsd) + " · ")
-           + (zashitaUsd >= 0 ? "защищено " + usd(zashitaUsd) : "при стопе " + usd(zashitaUsd)), zashitaUsd >= 0 ? "green" : "red")}
+    ${(() => { const rz = rezhimStopa(p);
+       return tile("если выбьет по стопу", rz.den,
+         rz.slovo + " · стоп " + fmtP(p.stop) + " (" + rz.proc + " цены)"
+         + (Math.abs(p.stop - st0)/st0 > 0.0005 ? " · был " + fmtP(st0) + " = " + usd(-riskUsd) : ""),
+         rz.kod === "plus" ? "green" : (rz.kod === "risk" ? "red" : "")); })()}
   </div>`;
 }
 function imyaVida(ist){
@@ -318,7 +338,7 @@ function renderPositions(){
           <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
           <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
           ${p.tf_formacii ? `<span class="side" style="background:#1b2533;color:#8fb8ff" title="таймфрейм, на котором бот нашёл формацию и отметил уровни">🔎 найдено на ${p.tf_formacii} мин</span>` : ""}
-          ${p.bezubytok ? '<span class="side long" title="стоп переведён на вход или лучше">🛡 В БЕЗУБЫТКЕ · защищена</span>' : ""}
+          ${(() => { const rz = rezhimStopa(p); return rz.plashka ? `<span class="side long" title="если цену развернёт и выбьет по текущему стопу, сделка закроется с этим результатом (по цене стопа; выход по закрытию свечи за стопом может дать немного другую цену)">${rz.plashka}</span>` : ""; })()}
           <span class="pos-pnl dim" data-pnl>—</span>
         </div>
         <div class="pos-sub">${imyaFormacii(p.formation)}${imyaVida(p.istochnik)} · ${p.trade_type === "pull" ? "ведение: тянуть по уровням" : (p.trade_type === "impulse" ? "ведение: импульс" : (p.trade_type || ""))} ·
@@ -564,7 +584,7 @@ async function loadTf(sym, tf, btn){
           l0.setData([{time:t0s, value:st0c},{time:Math.max(t0s + 1, Math.min(t_per, lastT2)), value:st0c}]);
           if (t_per < lastT2){
             const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
-              priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · перенесён" });
+              priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · " + rezhimStopa(p).podpis });
             l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
           }
         } else if (raznye){
@@ -586,7 +606,7 @@ async function loadTf(sym, tf, btn){
             l0.setData([{time:t0s, value:st0},{time:Math.min(t_per, lastT2), value:st0}]);
             if (t_per < lastT2){
               const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
-                priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · перенесён" });
+                priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · " + rezhimStopa(p).podpis });
               l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
             }
           } else {
