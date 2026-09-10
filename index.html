@@ -377,25 +377,44 @@ function mkChart(el){
       s.applyOptions({priceFormat:{type:"price", precision:prec, minMove:Math.pow(10,-prec)}});
     }};
 }
-function urovniLines(series, urovni){
+/* 🟥🟥🟥 10.09 УРОВНИ — ТОЛЬКО ОТ ТОЧКИ ЗАРОЖДЕНИЯ (Сергей, в ~десятый раз).
+   Корень возвратов: у уровней в data.json не было точки зарождения, и страница рисовала их встроенной
+   «линией цены» графика — бесконечной горизонталью. Каждая прошлая правка чинила одну ветку, а общий помощник
+   с бесконечной линией оставался и возвращался в следующей. Теперь такой линии на странице НЕТ вообще
+   (proverka_dashborda.py не даст опубликовать страницу, где она появится): любой уровень — отрезок от свечи
+   зарождения вправо + кружок на свече зарождения. Нет точки зарождения — уровень не рисуется. */
+function otrezok(o, bars, price, t0, color, width, style, title){
+  if (price == null || !bars.length) return null;
+  const lastT = bars[bars.length-1].time;
+  const start = Math.max(t0 || bars[0].time, bars[0].time);
+  if (start >= lastT) return null;
+  const ls = o.chart.addLineSeries({ color, lineWidth: width || 1, lineStyle: style || 0,
+    priceLineVisible:false, lastValueVisible: !!title, crosshairMarkerVisible:false, title: title || "" });
+  ls.setData([{time:start, value:+price}, {time:lastT, value:+price}]);
+  return ls;
+}
+function tochkaZarozhdeniya(ts_ms, bars, tfsec){
+  if (!ts_ms || !bars.length) return null;
+  const t = Math.floor((Math.floor(ts_ms/1000) + SDVIG) / tfsec) * tfsec;
+  return (t < bars[0].time) ? null : t;       // зарождение раньше окна графика — отрезок с левого края, без кружка
+}
+function urovenOtZarozhdeniya(o, bars, u, color, width, style, title, tfsec, markers){
+  if (!u || !u.rozhdenie_ts) return false;     // без точки зарождения уровень НЕ рисуется
+  const t0 = Math.floor(u.rozhdenie_ts/1000) + SDVIG;
+  if (!otrezok(o, bars, u.p, t0, color, width, style, title)) return false;
+  const tz = tochkaZarozhdeniya(u.rozhdenie_ts, bars, tfsec || 60);
+  if (tz && markers) markers.push({ time: tz, position: "inBar", color, shape: "circle", size: 1 });
+  return true;
+}
+function urovniLines(o, bars, urovni, tfsec, markers){
   // ЛОКАЛЬНЫЕ уровни — бледные и тихие (Сергей 01.09: «не миллиард уровней»);
-  // подпись на шкале только у значимых (2+ касания)
+  // подпись справа только у значимых (2+ касания)
   for (const u of (urovni || []).slice(0, 8)){
     if (!u.p) continue;
     const znachimyy = (u.kas || 0) >= 2;
-    series.createPriceLine({ price:+u.p,
-      color: znachimyy ? "#6b7687" : "#39414d", lineWidth:1,
-      lineStyle:LightweightCharts.LineStyle.SparseDotted,
-      axisLabelVisible: znachimyy,
-      title: znachimyy ? ((u.tf||"") + "·" + u.kas + "кас") : "" });
+    urovenOtZarozhdeniya(o, bars, u, znachimyy ? "#6b7687" : "#39414d", 1, 2,
+      znachimyy ? ((u.tf||"") + "·" + u.kas + "кас") : "", tfsec, markers);
   }
-}
-function priceLine(series, price, color, title, glavnaya){
-  if (price == null) return;
-  series.createPriceLine({ price:+price, color,
-    lineWidth: glavnaya ? 2 : 1,
-    lineStyle: glavnaya ? LightweightCharts.LineStyle.Solid
-                        : LightweightCharts.LineStyle.Dashed, title });
 }
 async function toggleChart(sym){
   const box = $("cb-" + sym), btn = $("btn-" + sym);
@@ -431,6 +450,7 @@ async function loadTf(sym, tf, btn){
       // ОСНОВНЫЕ — отрезками ОТ ЗАРОЖДЕНИЯ (как сервис), только сторона сделки
       const oznuzh = (p.direction === "long") ? "R" : "S";
       const lastT = bars.length ? bars[bars.length-1].time : null;
+      const markery = [];                 // кружки зарождения + ВХОД — ставятся одним setMarkers
       const mySide = (p.osnovnye || []).filter(z => z.storona === oznuzh)
         .sort((a,b) => (p.direction === "long") ? a.p - b.p : b.p - a.p);
       const t_vh0 = p.open_time ? Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60 : null;
@@ -447,16 +467,7 @@ async function loadTf(sym, tf, btn){
         }
         const nm = "УРОВЕНЬ " + (i+1) + (oz.stupeney > 1 ? " ·" + oz.stupeney + " кас" : "")
                  + (fin ? " · ФИНАЛ" : "") + (probit ? " · ✅ ПРОБИТ" : " → пробить");
-        if (oz.rozhdenie_ts && lastT){
-          const t0 = Math.floor(oz.rozhdenie_ts/1000) + SDVIG;
-          const ls = o.chart.addLineSeries({ color: fin ? "#2ecc71" : "#e8c34a",
-            lineWidth: fin ? 3 : 2, priceLineVisible:false, lastValueVisible:true,
-            title: nm });
-          ls.setData([{time: Math.max(t0, bars[0].time), value: oz.p},
-                      {time: lastT, value: oz.p}]);
-        } else {
-          priceLine(o.candle, oz.p, fin ? "#2ecc71" : "#e8c34a", nm, true);
-        }
+        urovenOtZarozhdeniya(o, bars, oz, fin ? "#2ecc71" : "#e8c34a", fin ? 3 : 2, 0, nm, tf*60, markery);
       });
       // 01.09 Сергей («хочу видеть уровни, которые бот собрался пробивать»):
       // когда ОСНОВНЫХ-каскада нет (в окне всё переписано), график был голым —
@@ -495,20 +506,21 @@ async function loadTf(sym, tf, btn){
           lstp.setData([{time:t0s, value:p.stop},{time:lastT2, value:p.stop}]);
         }
       } else {
-        priceLine(o.candle, p.entry, "#c9d1d9", "вход", true);
-        priceLine(o.candle, p.stop, "#ff5252", stopPodpis, true);
+        otrezok(o, bars, p.entry, bars[0].time, "#c9d1d9", 2, 0, "вход");
+        otrezok(o, bars, p.stop, bars[0].time, "#ff5252", 2, 0, stopPodpis);
       }
       if (!mySide.length){
-        (p.targets||[]).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
-            "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : ""), true));
+        (p.targets||[]).forEach((t,i) => otrezok(o, bars, t, t_vh || bars[0].time, "#2ecc71", 2, 0,
+            "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : "")));
       }
       if (p.open_time){
         const vt = Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60;
         vertLine(o, vt, bars, "rgba(46,204,113,0.6)");
-        o.candle.setMarkers([{ time: vt,
+        markery.push({ time: vt,
           position: p.direction === "long" ? "belowBar" : "aboveBar",
-          color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" }]);
+          color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" });
       }
+      if (markery.length) o.candle.setMarkers(markery.sort((a,b) => a.time - b.time));
     }
     o.chart.timeScale().scrollToRealTime();
   } catch(e){ el.innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
@@ -535,18 +547,20 @@ async function dealChart(x, tr){
     const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
     if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
-    urovniLines(o.candle, x.urovni);
-    priceLine(o.candle, x.entry_price, "#c9d1d9", "вход");
-    priceLine(o.candle, x.stop, "#ff5252", "стоп");
-    priceLine(o.candle, x.exit_price, "#f7b731", "выход");
-    (x.targets||[]).slice(0,3).forEach((t,i) => priceLine(o.candle, t, "#2ecc71",
-        "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : ""), true));
     const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/60)*60;
-    const mk = [{ time:mt(x.entry_time), position: x.dir==="long"?"belowBar":"aboveBar",
-                  color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" }];
+    const mk = [];
+    urovniLines(o, bars, x.urovni, 60, mk);
+    const tv = mt(x.entry_time);
+    otrezok(o, bars, x.entry_price, tv, "#c9d1d9", 1, 2, "вход");
+    otrezok(o, bars, x.stop, tv, "#ff5252", 1, 2, "стоп");
+    if (x.exit_time) otrezok(o, bars, x.exit_price, mt(x.exit_time), "#f7b731", 1, 2, "выход");
+    (x.targets||[]).slice(0,3).forEach((t,i) => otrezok(o, bars, t, tv, "#2ecc71", 2, 0,
+        "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : "")));
+    mk.push({ time:tv, position: x.dir==="long"?"belowBar":"aboveBar",
+                  color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" });
     if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
                   color:"#ff5252", shape:"arrowDown", size: 2, text:"ВЫХОД" });
-    o.candle.setMarkers(mk);
+    o.candle.setMarkers(mk.sort((a,b) => a.time - b.time));
     o.chart.timeScale().fitContent();
   } catch(e){ $("dealChartEl").innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
 }
