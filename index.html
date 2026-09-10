@@ -545,7 +545,23 @@ async function loadTf(sym, tf, btn){
         // ПУНКТИР ниже = стоп с запасом (риск 1% считается по нему).
         const t0s = Math.max(t_vh, bars[0].time);
         const raznye = p.stop_struct && Math.abs(p.stop_struct - p.stop) / p.stop > 0.0005;
-        if (raznye){
+        // 🟥 10.09 живая проверка USELESS: после переноса стопа ветка «структурный / с запасом» подписывала ПЕРЕНЕСЁННЫЙ стоп
+        // 0.23847 как «стоп с запасом · риск 1%», а начальный 0.259 — как «структурный». Та самая путаница со скрина
+        // Сергея. Если стоп переносили — рисуем «стоп был» (бледно, до переноса) и «стоп сейчас · перенесён» (от переноса).
+        const st0c = p.stop_nachalnyy || p.stop_struct || p.stop;
+        const perenesen = (p.stop_istoriya || []).length > 0 || (st0c && Math.abs(st0c - p.stop) / st0c > 0.0005 && !p.stop_struct);
+        if (perenesen){
+          const h1 = (p.stop_istoriya || [])[0];
+          const t_per = h1 && h1.t_ms ? Math.max(t0s, Math.floor((h1.t_ms/1000 + SDVIG) / (tf*60)) * tf*60) : lastT2;
+          const l0 = o.chart.addLineSeries({ color:"rgba(255,82,82,0.35)", lineWidth:2, lineStyle:2,
+            priceLineVisible:false, lastValueVisible:true, title:"стоп был" });
+          l0.setData([{time:t0s, value:st0c},{time:Math.max(t0s + 1, Math.min(t_per, lastT2)), value:st0c}]);
+          if (t_per < lastT2){
+            const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
+              priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · перенесён" });
+            l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
+          }
+        } else if (raznye){
           const lss = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2,
             priceLineVisible:false, lastValueVisible:true,
             title:"структурный стоп · " + stopPodpis.replace("стоп · ","") });
