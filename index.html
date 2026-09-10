@@ -468,9 +468,13 @@ function tochkaZarozhdeniya(ts_ms, bars, tfsec){
 function urovenOtZarozhdeniya(o, bars, u, color, width, style, title, tfsec, markers){
   if (!u || !u.rozhdenie_ts) return false;     // без точки зарождения уровень НЕ рисуется
   const t0 = Math.floor(u.rozhdenie_ts/1000) + SDVIG;
-  if (!otrezok(o, bars, u.p, t0, color, width, style, title)) return false;
-  const tz = tochkaZarozhdeniya(u.rozhdenie_ts, bars, tfsec || 60);
-  if (tz && markers) markers.push({ time: tz, position: "inBar", color, shape: "circle", size: 1 });
+  const ls = otrezok(o, bars, u.p, t0, color, width, style, title);
+  if (!ls) return false;
+  // 11.09 (скрин Сергея PONS): кружок зарождения ставился на СВЕЧУ (inBar = середина свечи), а не на уровень — у цели 1
+  // кружок был на ~0.749 при линии 0.7379. Теперь кружок на самой линии уровня, в её первой точке (минута зарождения).
+  if (tochkaZarozhdeniya(u.rozhdenie_ts, bars, tfsec || 60)){
+    try { ls.setMarkers([{ time: Math.max(t0, bars[0].time), position: "inBar", color, shape: "circle", size: 1 }]); } catch (e) {}
+  }
   return true;
 }
 function urovniLines(o, bars, urovni, tfsec, markers){
