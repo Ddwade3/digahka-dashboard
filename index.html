@@ -321,8 +321,8 @@ function metrikiHTML(p, price){
   return `<div class="cards" style="margin-top:14px">
     ${tile("прибыль сейчас", pnlUsd == null ? "—" : usd(pnlUsd), price ? ((hod(price)*100 >= 0 ? "+" : "") + (hod(price)*100).toFixed(2) + "% цены · объём " + sz.toFixed(0) + " $") : "ждём цену", pnlUsd == null ? "" : cls(pnlUsd))}
     ${tile("соотношение сейчас", pnlUsd == null || !riskUsd ? "—" : rr(pnlUsd / riskUsd),
-           tg.length && riskUsd ? "план " + rr(planUsd1 / riskUsd) + (tg.zhivye ? " до живой цели 1 · " : " до цели 1 · ") + rr(planUsdF / riskUsd) + " до финала" : "")}
-    ${tile("план прибыли", planUsd1 == null ? "—" : usd(planUsd1), planUsdF == null ? "" : (tg.zhivye ? "до живой цели 1 · " : "до цели 1 · ") + usd(planUsdF) + " до финала", "green")}
+           tg.length && riskUsd ? "план " + rr(planUsd1 / riskUsd) + (tg.zhivye ? " до основной цели 1 · " : " до цели 1 · ") + rr(planUsdF / riskUsd) + " до финала" : "")}
+    ${tile("план прибыли", planUsd1 == null ? "—" : usd(planUsd1), planUsdF == null ? "" : (tg.zhivye ? "до основной цели 1 · " : "до цели 1 · ") + usd(planUsdF) + " до финала", "green")}
     ${(() => { const rz = rezhimStopa(p);
        return tile("если выбьет по стопу", rz.den,
          rz.slovo + " · стоп " + fmtP(p.stop) + " (" + rz.proc + " цены)"
@@ -362,7 +362,7 @@ function renderPositions(){
             if (!mert.length) return "";
             const zh = (p.celi_zhivye || []).map(z => fmtP(z.p) + " (" + ((p.direction === "long" ? z.p / p.entry - 1 : 1 - z.p / p.entry) * 100).toFixed(1)
               + "% от входа" + ((z.kas || 0) >= 2 ? ", " + z.kas + " кас" : "") + ")");
-            return `<div class="path-note" style="color:#f0b429">⚠️ цели бота ${mert.join(", ")} пробиты ещё до входа (старая логика, для новых сделок исправлено 11.09) · живые цели: ${zh.join(", ") || "не найдены"}</div>`; })()}
+            return `<div class="path-note" style="color:#f0b429">⚠️ цели бота ${mert.join(", ")} пробиты ещё до входа (старая логика, для новых сделок исправлено 11.09) · ${zh.length ? "основные цели по правилам сервиса: " + zh.join(", ") : "основных уровней по правилам сервиса в сторону сделки НЕТ — бот вошёл без основных целей"}</div>`; })()}
         ${(() => { const bez = (p.targets || []).filter(t => !(p.celi || []).some(c => c.rozhdenie_ts && Math.abs(c.p - t) / t < 0.0015));
             return bez.length ? `<div class="path-note" style="color:#f0b429">⚠️ не найдена точка зарождения цели ${bez.map(fmtP).join(", ")} — линия будет короткой, сайт ищет её заново каждые 3 минуты</div>` : ""; })()}
         <div class="pos-actions">
@@ -668,7 +668,7 @@ async function loadTf(sym, tf, btn){
           && !(p.celi || []).some(c => c.probita_do_vhoda && Math.abs(c.p - t) / t < 0.0015));
         if (dubl) return;
         urovenOtZarozhdeniya(o, bars, z, "#00e676", 3, 0,
-          "ЖИВАЯ ЦЕЛЬ " + (i+1) + ((z.kas || 0) >= 2 ? " · " + z.kas + " кас" : ((z.kaskad || 0) >= 2 ? " · каскад" : "")), tf*60, markery);
+          "ОСНОВНАЯ ЦЕЛЬ " + (i+1) + ((z.kas || 0) >= 2 ? " · " + z.kas + " кас" : ((z.kaskad || 0) >= 2 ? " · каскад" : "")), tf*60, markery);
       });
       if (p.open_time){
         const vt = Math.floor((p.open_time + SDVIG) / (tf*60)) * tf*60;
