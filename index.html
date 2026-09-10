@@ -325,7 +325,7 @@ function metrikiHTML(p, price){
     ${tile("план прибыли", planUsd1 == null ? "—" : usd(planUsd1), planUsdF == null ? "" : (tg.zhivye ? "до основной цели 1 · " : "до цели 1 · ") + usd(planUsdF) + " до финала", "green")}
     ${(() => { const rz = rezhimStopa(p);
        return tile("если выбьет по стопу", rz.den,
-         rz.slovo + " · стоп " + fmtP(p.stop) + " (" + rz.proc + " цены)"
+         rz.slovo + " · стоп " + fmtP(p.stop) + " (" + rz.proc + " цены) · выход — если 5-мин свеча ЗАКРОЕТСЯ за стопом и следующая это подтвердит; фитиль за стопом не выбивает"
          + (Math.abs(p.stop - st0)/st0 > 0.0005 ? " · был " + fmtP(st0) + " = " + usd(-riskUsd) : ""),
          rz.kod === "plus" ? "green" : (rz.kod === "risk" ? "red" : "")); })()}
   </div>`;
@@ -607,7 +607,7 @@ async function loadTf(sym, tf, btn){
           l0.setData([{time:t0s, value:st0c},{time:Math.max(t0s + 1, Math.min(t_per, lastT2)), value:st0c}]);
           if (t_per < lastT2){
             const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
-              priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · " + rezhimStopa(p).podpis });
+              priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас (по закрытию 5м) · " + rezhimStopa(p).podpis });
             l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
           }
         } else if (raznye){
@@ -629,7 +629,7 @@ async function loadTf(sym, tf, btn){
             l0.setData([{time:t0s, value:st0},{time:Math.min(t_per, lastT2), value:st0}]);
             if (t_per < lastT2){
               const l1 = o.chart.addLineSeries({ color:"#ff5252", lineWidth:2, lineStyle:0,
-                priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас · " + rezhimStopa(p).podpis });
+                priceLineVisible:false, lastValueVisible:true, title:"стоп сейчас (по закрытию 5м) · " + rezhimStopa(p).podpis });
               l1.setData([{time:t_per, value:p.stop},{time:lastT2, value:p.stop}]);
             }
           } else {
