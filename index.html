@@ -427,7 +427,15 @@ async function toggleChart(sym){
   const tfs = $("tfs-" + sym);
   tfs.innerHTML = ["1","5","15"].map(tf =>
     `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин</button>`).join("");
-  await loadTf(sym, "1", tfs.querySelector(".tfbtn"));
+  // 🟥 10.09 (Сергей: «не вижу, куда бот целится»): график открывается на самом мелком ТФ, в окно которого
+  // (до 1400 свечей) влезает самая ранняя точка зарождения целей и уровней позиции — иначе цель начинается с края.
+  const pp = D.pozicii.find(x => x.symbol === sym);
+  const rz = pp ? [...(pp.celi || []), ...(pp.osnovnye || []), ...(pp.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
+  const vozrastMin = rz.length ? (Date.now() - Math.min(...rz)) / 60e3 : 0;
+  const tfStart = ["1","5","15"].find(t => vozrastMin / (+t) <= 1400) || "15";
+  const knopki = [...tfs.querySelectorAll(".tfbtn")];
+  knopki.forEach(b => b.classList.toggle("active", b.textContent.trim().startsWith(tfStart + " ")));
+  await loadTf(sym, tfStart, knopki.find(b => b.textContent.trim().startsWith(tfStart + " ")));
 }
 function vertLine(o, t, bars, color){
   const lo = Math.min(...bars.map(b => b.low)), hi = Math.max(...bars.map(b => b.high));
@@ -443,7 +451,7 @@ async function loadTf(sym, tf, btn){
   try {
     const p = D.pozicii.find(x => x.symbol === sym);
     // 🟥 10.09 окно от самой ранней точки зарождения уровней позиции (иначе уровни начинаются с левого края)
-    const rozhdP = p ? [...(p.osnovnye || []), ...(p.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
+    const rozhdP = p ? [...(p.celi || []), ...(p.osnovnye || []), ...(p.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
     const nuzhnoSvechey = rozhdP.length ? Math.ceil((Date.now() - Math.min(...rozhdP)) / (tf * 60e3)) + 30 : 0;
     const bars = await klines(sym, tf, Math.min(1500, Math.max(300, nuzhnoSvechey)));
     if (bars.length) o.fmt(bars[bars.length-1].close);
@@ -521,8 +529,10 @@ async function loadTf(sym, tf, btn){
           "уровень" + ((u.kas || 0) >= 2 ? " · " + u.kas + " кас" : ""), tf*60, markery));
         (p.targets||[]).forEach((t,i) => {
           const nm = "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : "");
-          const u = urP.find(v => t && Math.abs(v.p - t) / t < 0.0015);
-          if (u) urovenOtZarozhdeniya(o, bars, { p: t, rozhdenie_ts: u.rozhdenie_ts }, "#2ecc71", 2, 0, nm, tf*60, markery);
+          const c = (p.celi || []).find(v => v.rozhdenie_ts && t && Math.abs(v.p - t) / t < 0.0015);
+          const u = c || urP.find(v => t && Math.abs(v.p - t) / t < 0.0015);
+          if (u) urovenOtZarozhdeniya(o, bars, { p: t, rozhdenie_ts: u.rozhdenie_ts }, "#2ecc71",
+              (i === (p.targets.length-1)) ? 3 : 2, 0, nm, tf*60, markery);
           else otrezok(o, bars, t, t_vh || bars[0].time, "#2ecc71", 2, 0, nm);
         });
       }
@@ -560,7 +570,7 @@ async function dealChart(x, tr){
     // 🟥 10.09 ОКНО ОТ САМОЙ РАННЕЙ ТОЧКИ ЗАРОЖДЕНИЯ (стиль Сергея 14.06: «отдалить график, чтобы точки зарождения
     // ВСЕХ уровней были на экране»). Было: окно = 2 часа до входа ⇒ уровни RAYSOL зародились раньше окна и
     // выглядели бесконечными от левого края. ТФ подбирается, чтобы окно влезло в 1000 свечей.
-    const rozhd = (x.urovni || []).map(u => u.rozhdenie_ts).filter(Boolean);
+    const rozhd = [...(x.urovni || []), ...(x.celi || [])].map(u => u.rozhdenie_ts).filter(Boolean);
     const start = Math.min(t1 - 120 * 60e3, rozhd.length ? Math.min(...rozhd) - 30 * 60e3 : Infinity);
     const minut = Math.ceil((end - start) / 60e3);
     const tfd = minut <= 1000 ? 1 : (minut <= 5000 ? 5 : 15);
@@ -574,8 +584,12 @@ async function dealChart(x, tr){
     otrezok(o, bars, x.entry_price, tv, "#c9d1d9", 1, 2, "вход");
     otrezok(o, bars, x.stop, tv, "#ff5252", 1, 2, "стоп");
     if (x.exit_time) otrezok(o, bars, x.exit_price, mt(x.exit_time), "#f7b731", 1, 2, "выход");
-    (x.targets||[]).slice(0,3).forEach((t,i) => otrezok(o, bars, t, tv, "#2ecc71", 2, 0,
-        "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : "")));
+    (x.targets||[]).slice(0,3).forEach((t,i) => {
+      const nm = "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : "");
+      const c = (x.celi || []).find(v => v.rozhdenie_ts && t && Math.abs(v.p - t) / t < 0.0015);
+      if (!(c && urovenOtZarozhdeniya(o, bars, { p: t, rozhdenie_ts: c.rozhdenie_ts }, "#2ecc71", 2, 0, nm, tfd*60, mk)))
+        otrezok(o, bars, t, tv, "#2ecc71", 2, 0, nm);
+    });
     mk.push({ time:tv, position: x.dir==="long"?"belowBar":"aboveBar",
                   color:"#2ecc71", shape:"arrowUp", size: 2, text:"ВХОД" });
     if (x.exit_time) mk.push({ time:mt(x.exit_time), position: x.dir==="long"?"aboveBar":"belowBar",
