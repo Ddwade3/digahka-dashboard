@@ -81,6 +81,11 @@
   .tfbtn { background:none; border:1px solid var(--line); color:var(--dim); border-radius:6px;
            padding:2px 10px; font-size:12px; cursor:pointer; }
   .tfbtn.active { color:var(--accent); border-color:var(--accent); }
+  .fsbtn { background:none; border:1px solid var(--line); color:var(--txt); border-radius:6px; padding:3px 10px;
+           font-size:12px; cursor:pointer; margin-left:auto; }
+  .fsbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .chartbox:fullscreen { background:var(--bg, #0d1117); padding:10px; display:flex; flex-direction:column; }
+  .chartbox:fullscreen .chart { flex:1; height:auto !important; }
   .chart { height:340px; }
 
   /* ── метрики ── */
@@ -466,7 +471,8 @@ async function toggleChart(sym){
   box.style.display = ""; btn.classList.add("active");
   const tfs = $("tfs-" + sym);
   tfs.innerHTML = ["1","5","15"].map(tf =>
-    `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин${(D.pozicii.find(x => x.symbol === sym)||{}).tf_formacii === tf ? " ★ формация" : ""}</button>`).join("");
+    `<button class="tfbtn${tf==="1"?" active":""}" onclick="loadTf('${sym}','${tf}',this)">${tf} мин${(D.pozicii.find(x => x.symbol === sym)||{}).tf_formacii === tf ? " ★ формация" : ""}</button>`).join("")
+    + `<button class="fsbtn" onclick="naVesEkran('cb-${sym}')">⛶ на весь экран</button>`;
   // 🟥 10.09 (Сергей: «не вижу, куда бот целится»): график открывается на самом мелком ТФ, в окно которого
   // (до 1400 свечей) влезает самая ранняя точка зарождения целей и уровней позиции — иначе цель начинается с края.
   const pp = D.pozicii.find(x => x.symbol === sym);
@@ -597,9 +603,9 @@ async function loadTf(sym, tf, btn){
         // 🟥 10.09 (Сергей: «уровни исчезли»): когда основных-каскада нет, график позиции был БЕЗ уровней вовсе —
         // уровни бота (p.urovni) сюда не выводились, а «уровнями» выглядели бесконечные линии целей. Теперь уровни
         // бота рисуются от своей точки зарождения с кружком; цель, совпавшая с уровнем, тянется от его зарождения.
+        // 10.09 (Сергей: «зачем серые уровни, один уже пробит; в сервисе только основные»): серые уровни бота не рисуем,
+        // на графике только цели — от точки зарождения своего уровня. urP нужен лишь для поиска зарождения цели.
         const urP = (p.urovni || []).filter(u => u.rozhdenie_ts);
-        urP.slice(0, 8).forEach(u => urovenOtZarozhdeniya(o, bars, u, "#9aa4b2", 1, 0,
-          "уровень" + ((u.kas || 0) >= 2 ? " · " + u.kas + " кас" : ""), tf*60, markery));
         (p.targets||[]).forEach((t,i) => {
           const nm = "ЦЕЛЬ " + (i+1) + (i === (p.targets.length-1) ? " · ФИНАЛ" : "");
           const c = (p.celi || []).find(v => v.rozhdenie_ts && t && Math.abs(v.p - t) / t < 0.0015);
@@ -627,11 +633,12 @@ async function loadTf(sym, tf, btn){
 async function dealChart(x, tr){
   const holder = $("dealChart");
   if (dealChartObj){ dealChartObj.chart.remove(); dealChartObj = null; }
-  holder.innerHTML = `<div class="chartbox" style="margin-top:10px">
+  holder.innerHTML = `<div class="chartbox" id="dealChartBox" style="margin-top:10px">
     <div class="tfs"><span class="dim" style="padding:2px 6px">
       ${x.symbol} · ${x.dir === "long" ? "лонг" : "шорт"} · вход ${x.entry_time.slice(11,16)} →
       выход ${(x.exit_time||"").slice(11,16)} · ${x.pnl_pct > 0 ? "+" : ""}${x.pnl_pct}%</span>
-      <button class="tfbtn" style="margin-left:auto" onclick="closeDealChart()">✕ закрыть</button></div>
+      <button class="fsbtn" style="margin-left:auto" onclick="naVesEkran('dealChartBox')">⛶ на весь экран</button>
+      <button class="tfbtn" onclick="closeDealChart()">✕ закрыть</button></div>
     <div class="chart" id="dealChartEl"></div></div>`;
   holder.scrollIntoView({behavior:"smooth", block:"center"});
   const o = mkChart($("dealChartEl"));
@@ -652,7 +659,7 @@ async function dealChart(x, tr){
     o.candle.setData(bars);
     const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/(tfd*60))*(tfd*60);
     const mk = [];
-    urovniLines(o, bars, x.urovni, tfd*60, mk);
+    // 10.09: серые уровни не рисуем — только цели от зарождения (как в сервисе)
     const tv = mt(x.entry_time);
     otrezok(o, bars, x.entry_price, tv, "#c9d1d9", 1, 2, "вход");
     otrezok(o, bars, x.stop, tv, "#ff5252", 1, 2, "стоп");
@@ -671,6 +678,26 @@ async function dealChart(x, tr){
     o.chart.timeScale().fitContent();
   } catch(e){ $("dealChartEl").innerHTML = '<div style="padding:20px" class="dim">график недоступен: ' + e.message + "</div>"; }
 }
+/* 10.09 (Сергей: «хочу полноэкранный режим, график мелкий»): кнопка открывает блок графика на весь экран,
+   график растягивается по размеру экрана; повторное нажатие или Esc — обратно. */
+function naVesEkran(id){
+  const box = document.getElementById(id); if (!box) return;
+  if (document.fullscreenElement){ (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  const req = box.requestFullscreen || box.webkitRequestFullscreen;
+  if (req) req.call(box);
+}
+function podognatRazmer(){
+  const pary = Object.keys(openCharts).map(sym => [openCharts[sym], document.getElementById("chart-" + sym)]);
+  if (dealChartObj) pary.push([dealChartObj, document.getElementById("dealChartEl")]);
+  for (const [o, el] of pary){
+    if (!o || !el) continue;
+    requestAnimationFrame(() => o.chart.applyOptions({ width: el.clientWidth, height: el.clientHeight }));
+  }
+}
+document.addEventListener("fullscreenchange", podognatRazmer);
+document.addEventListener("webkitfullscreenchange", podognatRazmer);
+window.addEventListener("resize", () => { if (document.fullscreenElement) podognatRazmer(); });
+
 function closeDealChart(){
   if (dealChartObj){ dealChartObj.chart.remove(); dealChartObj = null; }
   $("dealChart").innerHTML = "";
