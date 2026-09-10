@@ -441,11 +441,14 @@ async function loadTf(sym, tf, btn){
   const el = $("chart-" + sym); el.innerHTML = "";
   const o = mkChart(el);
   try {
-    const bars = await klines(sym, tf, 300);
+    const p = D.pozicii.find(x => x.symbol === sym);
+    // 🟥 10.09 окно от самой ранней точки зарождения уровней позиции (иначе уровни начинаются с левого края)
+    const rozhdP = p ? [...(p.osnovnye || []), ...(p.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
+    const nuzhnoSvechey = rozhdP.length ? Math.ceil((Date.now() - Math.min(...rozhdP)) / (tf * 60e3)) + 30 : 0;
+    const bars = await klines(sym, tf, Math.min(1500, Math.max(300, nuzhnoSvechey)));
     if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
     o.lastBar = bars[bars.length-1];
-    const p = D.pozicii.find(x => x.symbol === sym);
     if (p){
       // ОСНОВНЫЕ — отрезками ОТ ЗАРОЖДЕНИЯ (как сервис), только сторона сделки
       const oznuzh = (p.direction === "long") ? "R" : "S";
@@ -544,12 +547,19 @@ async function dealChart(x, tr){
     const t1 = jepoch(x.entry_time);
     const t2 = x.exit_time ? jepoch(x.exit_time) : t1 + 3600e3;
     const end = t2 + 40 * 60e3;      // klines принимает реальный epoch мс
-    const bars = await klines(x.symbol, "1", Math.min(1000, Math.ceil((t2-t1)/60e3) + 120), end);
+    // 🟥 10.09 ОКНО ОТ САМОЙ РАННЕЙ ТОЧКИ ЗАРОЖДЕНИЯ (стиль Сергея 14.06: «отдалить график, чтобы точки зарождения
+    // ВСЕХ уровней были на экране»). Было: окно = 2 часа до входа ⇒ уровни RAYSOL зародились раньше окна и
+    // выглядели бесконечными от левого края. ТФ подбирается, чтобы окно влезло в 1000 свечей.
+    const rozhd = (x.urovni || []).map(u => u.rozhdenie_ts).filter(Boolean);
+    const start = Math.min(t1 - 120 * 60e3, rozhd.length ? Math.min(...rozhd) - 30 * 60e3 : Infinity);
+    const minut = Math.ceil((end - start) / 60e3);
+    const tfd = minut <= 1000 ? 1 : (minut <= 5000 ? 5 : 15);
+    const bars = await klines(x.symbol, String(tfd), Math.min(1000, Math.ceil(minut / tfd) + 5), end);
     if (bars.length) o.fmt(bars[bars.length-1].close);
     o.candle.setData(bars);
-    const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/60)*60;
+    const mt = ts => Math.floor((jepoch(ts)/1000 + SDVIG)/(tfd*60))*(tfd*60);
     const mk = [];
-    urovniLines(o, bars, x.urovni, 60, mk);
+    urovniLines(o, bars, x.urovni, tfd*60, mk);
     const tv = mt(x.entry_time);
     otrezok(o, bars, x.entry_price, tv, "#c9d1d9", 1, 2, "вход");
     otrezok(o, bars, x.stop, tv, "#ff5252", 1, 2, "стоп");
