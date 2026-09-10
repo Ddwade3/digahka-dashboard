@@ -273,7 +273,9 @@ function metrikiHTML(p, price){
   const lon = p.direction === "long";
   const sz = +p.size || 0, st0 = p.stop_nachalnyy || p.stop, e = +p.entry;
   const hod = v => (lon ? v - e : e - v) / e;                  // ход цены в долях, «+» = в нашу сторону
-  const riskUsd = p.risk_usd || (sz * Math.abs(e - st0) / e);
+  // риск на входе = объём × расстояние до НАЧАЛЬНОГО стопа (как считает pravda.py). НЕ risk_amount из журнала:
+  // это бюджет 1% депозита, а не риск этой позиции (USELESS: бюджет 1.26 $, по стопу 0.755 $ — соотношение врало бы).
+  const riskUsd = sz * Math.abs(e - st0) / e;
   const tg = (p.targets || []).slice().sort((a,b) => lon ? a-b : b-a);
   const usd = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + " $";
   const rr = v => "1 : " + (v).toFixed(1);
