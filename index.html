@@ -520,6 +520,7 @@ async function toggleChart(sym){
   // (до 1400 свечей) влезает самая ранняя точка зарождения целей и уровней позиции — иначе цель начинается с края.
   const pp = D.pozicii.find(x => x.symbol === sym);
   const rz = pp ? [...(pp.celi || []), ...(pp.celi_zhivye || []), ...(pp.osnovnye || []), ...(pp.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
+  if (pp && pp.stop_mesto && pp.stop_mesto.ts) rz.push(pp.stop_mesto.ts);   // 29.09 V-403в: место стопа тоже должно быть в окне
   const vozrastMin = rz.length ? (Date.now() - Math.min(...rz)) / 60e3 : 0;
   // 10.09 (Сергей: «хочу видеть, на каком ТФ найдена формация»): открываем на ТФ формации, кнопка помечена ★
   const tfStart = (pp && ["1","5","15"].includes(String(pp.tf_formacii))) ? String(pp.tf_formacii)
@@ -543,6 +544,7 @@ async function loadTf(sym, tf, btn){
     const p = D.pozicii.find(x => x.symbol === sym);
     // 🟥 10.09 окно от самой ранней точки зарождения уровней позиции (иначе уровни начинаются с левого края)
     const rozhdP = p ? [...(p.celi || []), ...(p.celi_zhivye || []), ...(p.osnovnye || []), ...(p.urovni || [])].map(u => u.rozhdenie_ts).filter(Boolean) : [];
+    if (p && p.stop_mesto && p.stop_mesto.ts) rozhdP.push(p.stop_mesto.ts);   // 29.09 V-403в
     const nuzhnoSvechey = rozhdP.length ? Math.ceil((Date.now() - Math.min(...rozhdP)) / (tf * 60e3)) + 30 : 0;
     const bars = await klines(sym, tf, Math.min(1500, Math.max(300, nuzhnoSvechey)));
     if (bars.length) o.fmt(bars[bars.length-1].close);
@@ -594,7 +596,16 @@ async function loadTf(sym, tf, btn){
         lv.setData([{time:Math.max(t_vh,bars[0].time), value:p.entry},{time:lastT2, value:p.entry}]);
         // 02.09 схема Сергея: СПЛОШНАЯ = структурный стоп (за структурой),
         // ПУНКТИР ниже = стоп с запасом (риск 1% считается по нему).
-        const t0s = Math.max(t_vh, bars[0].time);
+        // 🟥 29.09 V-403в (Сергей, XLM: «стоп помечен в воздухе; линия должна доходить до места, за которое он спрятан»): стоп — отрезок
+        // ОТ СВЕЧИ структурного места (фитиль/лой/хай), кружок на самой свече. Место пишет бот (stop_mesto), сайт его не выдумывает.
+        const sm = (p.stop_mesto && p.stop_mesto.ts) ? p.stop_mesto : null;
+        const t_sm = sm ? Math.floor((Math.floor(sm.ts/1000) + SDVIG) / (tf*60)) * tf*60 : null;
+        const t0s = Math.max((t_sm && t_sm < t_vh) ? t_sm : t_vh, bars[0].time);
+        if (sm){
+          stopPodpis = "стоп · за " + (sm.vid || "структурой") + " " + fmtP(sm.p);
+          if (t_sm >= bars[0].time) markery.push({ time: t_sm, position: p.direction === "long" ? "belowBar" : "aboveBar", color: "#ff5252",
+            shape: "circle", size: 1, text: "стоп за этим " + (p.direction === "long" ? "лоем " : "хаем ") + fmtP(sm.p) });
+        }
         const raznye = p.stop_struct && Math.abs(p.stop_struct - p.stop) / p.stop > 0.0005;
         // 🟥 10.09 живая проверка USELESS: после переноса стопа ветка «структурный / с запасом» подписывала ПЕРЕНЕСЁННЫЙ стоп
         // 0.23847 как «стоп с запасом · риск 1%», а начальный 0.259 — как «структурный». Та самая путаница со скрина
@@ -709,6 +720,7 @@ async function dealChart(x, tr){
     // ВСЕХ уровней были на экране»). Было: окно = 2 часа до входа ⇒ уровни RAYSOL зародились раньше окна и
     // выглядели бесконечными от левого края. ТФ подбирается, чтобы окно влезло в 1000 свечей.
     const rozhd = [...(x.urovni || []), ...(x.celi || [])].map(u => u.rozhdenie_ts).filter(Boolean);
+    if (x.stop_mesto && x.stop_mesto.ts) rozhd.push(x.stop_mesto.ts);   // 29.09 V-403в
     const start = Math.min(t1 - 120 * 60e3, rozhd.length ? Math.min(...rozhd) - 30 * 60e3 : Infinity);
     const minut = Math.ceil((end - start) / 60e3);
     const tfd = minut <= 1000 ? 1 : (minut <= 5000 ? 5 : 15);
@@ -720,7 +732,12 @@ async function dealChart(x, tr){
     // 10.09: серые уровни не рисуем — только цели от зарождения (как в сервисе)
     const tv = mt(x.entry_time);
     otrezok(o, bars, x.entry_price, tv, "#c9d1d9", 1, 2, "вход");
-    otrezok(o, bars, x.stop, tv, "#ff5252", 1, 2, "стоп");
+    // 29.09 V-403в: стоп закрытой сделки — тоже от свечи места, за которое он был спрятан
+    const smx = (x.stop_mesto && x.stop_mesto.ts) ? x.stop_mesto : null;
+    const tsm = smx ? Math.floor((Math.floor(smx.ts/1000) + SDVIG)/(tfd*60))*(tfd*60) : null;
+    otrezok(o, bars, x.stop, (tsm && tsm < tv) ? tsm : tv, "#ff5252", 2, smx ? 0 : 2, smx ? "стоп · за " + (smx.vid || "структурой") + " " + fmtP(smx.p) : "стоп");
+    if (smx && bars.length && tsm >= bars[0].time) mk.push({ time: tsm, position: x.dir === "long" ? "belowBar" : "aboveBar", color: "#ff5252",
+      shape: "circle", size: 1, text: "стоп за этим " + (x.dir === "long" ? "лоем" : "хаем") });
     if (x.exit_time) otrezok(o, bars, x.exit_price, mt(x.exit_time), "#f7b731", 1, 2, "выход");
     (x.targets||[]).slice(0,3).forEach((t,i) => {
       const nm = "ЦЕЛЬ " + (i+1) + (i === Math.min((x.targets||[]).length,3)-1 ? " · ФИНАЛ" : "");
