@@ -136,6 +136,8 @@
 </div></div>
 
 <div class="wrap">
+  <div id="stmacd"></div>
+
   <div id="positions"></div>
 
   <h2>Сегодня</h2>
@@ -209,7 +211,7 @@ function wsConnect(symbols){
       const m = JSON.parse(ev.data);
       if (m.topic && m.topic.startsWith("tickers.") && m.data){
         const p = parseFloat(m.data.lastPrice);
-        if (p) { live[m.data.symbol] = p; renderPositionsLive(); }
+        if (p) { live[m.data.symbol] = p; renderPositionsLive(); renderStmacdLive(); }
       }
     } catch(e){}
   };
@@ -333,6 +335,56 @@ function metrikiHTML(p, price){
 function imyaVida(ist){
   const m = String(ist || "").match(/shema_v(\d)/);
   return m ? " · вид " + m[1] : "";
+}
+
+/* ───────── 🧭 St.MACD-бот (бумага, стратегия Сергея, 02.10) — рисуем ТОЛЬКО его файлы из data.json.stmacd ───────── */
+function stPnl(p, price){
+  if (!price) return null;
+  const sg = p.direction === "long" ? 1 : -1;
+  return sg * (price - p.entry) / p.entry * 100;
+}
+function renderStmacd(){
+  const box = $("stmacd"); const S = D.stmacd;
+  if (!S){ box.innerHTML = ""; return; }
+  const ts = ms => { const d = new Date(ms); return ("0"+d.getDate()).slice(-2) + "." + ("0"+(d.getMonth()+1)).slice(-2) + " " + ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2); };
+  const wr = S.vsego.n ? Math.round(100 * S.vsego.plus / S.vsego.n) : 0;
+  let h = `<h2>🧭 St.MACD-бот · бумага · стратегия Сергея
+      <span class="badge ${S.zhiv ? "b-ok" : "b-bad"}"><span class="dot${S.zhiv ? " pulse" : ""}"></span>${S.zhiv ? "работает" : "ОСТАНОВЛЕН"}</span>
+      <span class="badge b-dim">счёт ${S.depozit != null ? S.depozit.toFixed(2) + "$" : "—"}</span></h2>
+    <div class="cards">
+      <div class="card"><div class="t">Сегодня</div><div class="v ${S.segodnya.usd > 0 ? "green" : (S.segodnya.usd < 0 ? "red" : "")}">${S.segodnya.usd >= 0 ? "+" : ""}${S.segodnya.usd.toFixed(2)}$</div><div class="s">сделок ${S.segodnya.n} · в плюс ${S.segodnya.plus}</div></div>
+      <div class="card"><div class="t">Всего</div><div class="v ${S.vsego.usd > 0 ? "green" : (S.vsego.usd < 0 ? "red" : "")}">${S.vsego.usd >= 0 ? "+" : ""}${S.vsego.usd.toFixed(2)}$</div><div class="s">сделок ${S.vsego.n} · винрейт ${wr}%</div></div>
+      <div class="card"><div class="t">Открыто</div><div class="v">${S.pozicii.length}</div><div class="s">${S.pozicii.map(p => p.symbol.replace("USDT","")).join(", ") || "позиций нет"}</div></div>
+    </div>`;
+  h += S.pozicii.map(p => {
+    const price = live[p.symbol] || null; const pnl = stPnl(p, price);
+    return `<div class="pos" id="st-pos-${p.symbol}">
+      <div class="pos-head">
+        <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
+        <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
+        <span class="pos-pnl ${pnl == null ? "dim" : (pnl >= 0 ? "green" : "red")}" data-stpnl>${pnl == null ? "—" : (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%"}</span>
+      </div>
+      <div class="pos-sub">вход ${p.entry} · стоп ${p.stop} (−2 %) · потолок ${p.cel} (+12 %) · выход — когда день перекрасится · с ${ts(p.t0)} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"}</div>
+      <div class="pos-sub">${p.prichina || ""}</div>
+    </div>`;
+  }).join("");
+  if (S.sdelki.length){
+    h += `<div class="scroll"><table><thead><tr><th>Выход</th><th>Монета</th><th></th><th>Причина</th><th class="num">PnL %</th><th class="num">R</th><th class="num">$</th><th class="num">мин</th></tr></thead><tbody>` +
+      S.sdelki.map(z => `<tr><td>${ts(z.t1)}</td><td>${z.symbol.replace("USDT","")}</td><td><span class="side ${z.direction}">${z.direction === "long" ? "Л" : "Ш"}</span></td><td class="exit">${z.prichina}</td>
+        <td class="num ${z.pnl_pct >= 0 ? "green" : "red"}">${z.pnl_pct >= 0 ? "+" : ""}${z.pnl_pct.toFixed(2)}</td><td class="num">${z.R >= 0 ? "+" : ""}${z.R.toFixed(1)}</td>
+        <td class="num ${z.usd >= 0 ? "green" : "red"}">${z.usd >= 0 ? "+" : ""}${z.usd.toFixed(2)}</td><td class="num dim">${z.minut}</td></tr>`).join("") + `</tbody></table></div>`;
+  } else {
+    h += `<div class="pos dim">закрытых сделок пока нет</div>`;
+  }
+  box.innerHTML = h;
+}
+function renderStmacdLive(){
+  if (!D || !D.stmacd) return;
+  D.stmacd.pozicii.forEach(p => {
+    const el = document.querySelector(`#st-pos-${p.symbol} [data-stpnl]`); const pnl = stPnl(p, live[p.symbol] || null);
+    if (!el || pnl == null) return;
+    el.textContent = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%"; el.className = "pos-pnl " + (pnl >= 0 ? "green" : "red");
+  });
 }
 
 /* ───────── позиции ───────── */
@@ -889,6 +941,7 @@ async function load(){
     const posKey = JSON.stringify(D.pozicii.map(p => [p.symbol, p.entry, p.stop, (p.urovni||[]).length]));
     if (posKey !== window._posKey){ window._posKey = posKey; renderPositions(); }
     else renderPositionsLive();
+    renderStmacd();
     renderToday();
     renderDaySeg();
     renderDeals();
@@ -897,7 +950,7 @@ async function load(){
              Math.max(...D.nedelya.dni.map(x => Math.abs(x.usd)), 1));
     barTable("formacii", D.formacii7.map(x => ({label:x.name, n:x.n, wr:x.wr, usd:x.usd})),
              Math.max(...D.formacii7.map(x => Math.abs(x.usd)), 1));
-    const syms = D.pozicii.map(p => p.symbol);
+    const syms = D.pozicii.map(p => p.symbol).concat(((D.stmacd || {}).pozicii || []).map(p => p.symbol));
     const cur = ws && ws.readyState === 1;
     if (!cur || JSON.stringify(syms) !== (window._wsSyms||"")) {
       window._wsSyms = JSON.stringify(syms); wsConnect(syms);
