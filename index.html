@@ -343,18 +343,28 @@ function stPnl(p, price){
   const sg = p.direction === "long" ? 1 : -1;
   return sg * (price - p.entry) / p.entry * 100;
 }
+const usd = x => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(2) + "$";
+function stPnlText(p, price){          // «+1.23 % = +0.62$ (+0.6R)» по живой цене
+  const pnl = stPnl(p, price); if (pnl == null) return "—";
+  const stop = (D.stmacd.cfg || {}).stop_pct || 2;
+  return (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "% = " + usd((p.size || 0) * pnl / 100) + " (" + (pnl / stop >= 0 ? "+" : "") + (pnl / stop).toFixed(1) + "R)";
+}
 function renderStmacd(){
   const box = $("stmacd"); const S = D.stmacd;
   if (!S){ box.innerHTML = ""; return; }
   const ts = ms => { const d = new Date(ms); return ("0"+d.getDate()).slice(-2) + "." + ("0"+(d.getMonth()+1)).slice(-2) + " " + ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2); };
   const wr = S.vsego.n ? Math.round(100 * S.vsego.plus / S.vsego.n) : 0;
+  const cfg = S.cfg || {}; const start = cfg.depozit_start || 100; const stop = cfg.stop_pct || 2; const risk = cfg.risk_pct || 1; const pot = cfg.potolok_R || 6;
+  const vObeme = S.pozicii.reduce((a, p) => a + (p.size || 0), 0);
+  const otkr = S.pozicii.reduce((a, p) => { const x = stPnl(p, live[p.symbol] || null); return x == null ? a : a + (p.size || 0) * x / 100; }, 0);
   let h = `<h2>🧭 St.MACD-бот · бумага · стратегия Сергея
       <span class="badge ${S.zhiv ? "b-ok" : "b-bad"}"><span class="dot${S.zhiv ? " pulse" : ""}"></span>${S.zhiv ? "работает" : "ОСТАНОВЛЕН"}</span>
-      <span class="badge b-dim">счёт ${S.depozit != null ? S.depozit.toFixed(2) + "$" : "—"}</span></h2>
+      <span class="badge b-dim">счёт ${S.depozit != null ? S.depozit.toFixed(2) + "$ (" + usd(S.depozit - start) + " от " + start + "$)" : "—"}</span>
+      <span class="badge b-dim">риск ${risk}% = ${(S.depozit != null ? S.depozit * risk / 100 : 0).toFixed(2)}$ на сделку · стоп ${stop}% · потолок ${pot}R</span></h2>
     <div class="cards">
-      <div class="card"><div class="t">Сегодня</div><div class="v ${S.segodnya.usd > 0 ? "green" : (S.segodnya.usd < 0 ? "red" : "")}">${S.segodnya.usd >= 0 ? "+" : ""}${S.segodnya.usd.toFixed(2)}$</div><div class="s">сделок ${S.segodnya.n} · в плюс ${S.segodnya.plus}</div></div>
-      <div class="card"><div class="t">Всего</div><div class="v ${S.vsego.usd > 0 ? "green" : (S.vsego.usd < 0 ? "red" : "")}">${S.vsego.usd >= 0 ? "+" : ""}${S.vsego.usd.toFixed(2)}$</div><div class="s">сделок ${S.vsego.n} · винрейт ${wr}%</div></div>
-      <div class="card"><div class="t">Открыто</div><div class="v">${S.pozicii.length}</div><div class="s">${S.pozicii.map(p => p.symbol.replace("USDT","")).join(", ") || "позиций нет"}</div></div>
+      <div class="card"><div class="t">Сегодня</div><div class="v ${S.segodnya.usd > 0 ? "green" : (S.segodnya.usd < 0 ? "red" : "")}">${usd(S.segodnya.usd)}</div><div class="s">сделок ${S.segodnya.n} · в плюс ${S.segodnya.plus}</div></div>
+      <div class="card"><div class="t">Всего</div><div class="v ${S.vsego.usd > 0 ? "green" : (S.vsego.usd < 0 ? "red" : "")}">${usd(S.vsego.usd)}</div><div class="s">сделок ${S.vsego.n} · винрейт ${wr}%</div></div>
+      <div class="card"><div class="t">В открытых сейчас</div><div class="v ${otkr > 0 ? "green" : (otkr < 0 ? "red" : "")}" data-st-otkr>${S.pozicii.length ? usd(otkr) : "—"}</div><div class="s">позиций ${S.pozicii.length} · объём ${vObeme.toFixed(0)}$ · без комиссии</div></div>
     </div>`;
   h += S.pozicii.map(p => {
     const price = live[p.symbol] || null; const pnl = stPnl(p, price);
@@ -362,9 +372,9 @@ function renderStmacd(){
       <div class="pos-head">
         <span class="pos-sym">${p.symbol.replace("USDT","")}</span>
         <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
-        <span class="pos-pnl ${pnl == null ? "dim" : (pnl >= 0 ? "green" : "red")}" data-stpnl>${pnl == null ? "—" : (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%"}</span>
+        <span class="pos-pnl ${pnl == null ? "dim" : (pnl >= 0 ? "green" : "red")}" data-stpnl>${stPnlText(p, price)}</span>
       </div>
-      <div class="pos-sub">вход ${p.entry} · стоп ${p.stop} (−2 %) · потолок ${p.cel} (+12 %) · выход — когда день перекрасится · с ${ts(p.t0)} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"}</div>
+      <div class="pos-sub">вход ${p.entry} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"} · стоп ${p.stop} (−${stop} % = −${((p.size || 0) * stop / 100).toFixed(2)}$) · потолок ${p.cel} (+${stop * pot} % = +${((p.size || 0) * stop * pot / 100).toFixed(2)}$) · выход — когда день перекрасится · с ${ts(p.t0)}</div>
       <div class="pos-sub">${p.prichina || ""}</div>
     </div>`;
   }).join("");
@@ -383,8 +393,13 @@ function renderStmacdLive(){
   D.stmacd.pozicii.forEach(p => {
     const el = document.querySelector(`#st-pos-${p.symbol} [data-stpnl]`); const pnl = stPnl(p, live[p.symbol] || null);
     if (!el || pnl == null) return;
-    el.textContent = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%"; el.className = "pos-pnl " + (pnl >= 0 ? "green" : "red");
+    el.textContent = stPnlText(p, live[p.symbol]); el.className = "pos-pnl " + (pnl >= 0 ? "green" : "red");
   });
+  const el = document.querySelector("[data-st-otkr]");
+  if (el && D.stmacd.pozicii.length){
+    const otkr = D.stmacd.pozicii.reduce((a, p) => { const x = stPnl(p, live[p.symbol] || null); return x == null ? a : a + (p.size || 0) * x / 100; }, 0);
+    el.textContent = usd(otkr); el.className = "v " + (otkr > 0 ? "green" : (otkr < 0 ? "red" : ""));
+  }
 }
 
 /* ───────── позиции ───────── */
