@@ -346,7 +346,7 @@ function stPnl(p, price){
 const usd = x => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(2) + "$";
 function stPnlText(p, price){          // «+1.23 % = +0.62$ (+0.6R)» по живой цене
   const pnl = stPnl(p, price); if (pnl == null) return "—";
-  const stop = (D.stmacd.cfg || {}).stop_pct || 2;
+  const stop = p.stop_pct || (D.stmacd.cfg || {}).stop_pct || 2;
   return (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "% = " + usd((p.size || 0) * pnl / 100) + " (" + (pnl / stop >= 0 ? "+" : "") + (pnl / stop).toFixed(1) + "R)";
 }
 function renderStmacd(){
@@ -360,7 +360,8 @@ function renderStmacd(){
   let h = `<h2>🧭 St.MACD-бот · бумага · стратегия Сергея
       <span class="badge ${S.zhiv ? "b-ok" : "b-bad"}"><span class="dot${S.zhiv ? " pulse" : ""}"></span>${S.zhiv ? "работает" : "ОСТАНОВЛЕН"}</span>
       <span class="badge b-dim">счёт ${S.depozit != null ? S.depozit.toFixed(2) + "$ (" + usd(S.depozit - start) + " от " + start + "$)" : "—"}</span>
-      <span class="badge b-dim">риск ${risk}% = ${(S.depozit != null ? S.depozit * risk / 100 : 0).toFixed(2)}$ на сделку · стоп ${stop}% · потолок ${pot}R</span></h2>
+      <span class="badge b-dim">риск ${risk}% = ${(S.depozit != null ? S.depozit * risk / 100 : 0).toFixed(2)}$ на сделку · стоп ${cfg.stop_rezhim === "atr" ? cfg.stop_atr_m + "×ATR часа [" + cfg.stop_min_pct + "…" + cfg.stop_max_pct + " %]" : stop + "%"} · потолок ${pot}R</span>
+      ${cfg.vhody === false ? '<span class="badge b-bad">входы выключены</span>' : ""}</h2>
     <div class="cards">
       <div class="card"><div class="t">Сегодня</div><div class="v ${S.segodnya.usd > 0 ? "green" : (S.segodnya.usd < 0 ? "red" : "")}">${usd(S.segodnya.usd)}</div><div class="s">сделок ${S.segodnya.n} · в плюс ${S.segodnya.plus}</div></div>
       <div class="card"><div class="t">Всего</div><div class="v ${S.vsego.usd > 0 ? "green" : (S.vsego.usd < 0 ? "red" : "")}">${usd(S.vsego.usd)}</div><div class="s">сделок ${S.vsego.n} · винрейт ${wr}%</div></div>
@@ -374,7 +375,7 @@ function renderStmacd(){
         <span class="side ${p.direction}">${p.direction === "long" ? "ЛОНГ" : "ШОРТ"}</span>
         <span class="pos-pnl ${pnl == null ? "dim" : (pnl >= 0 ? "green" : "red")}" data-stpnl>${stPnlText(p, price)}</span>
       </div>
-      <div class="pos-sub">вход ${p.entry} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"} · стоп ${p.stop} (−${stop} % = −${((p.size || 0) * stop / 100).toFixed(2)}$) · потолок ${p.cel} (+${stop * pot} % = +${((p.size || 0) * stop * pot / 100).toFixed(2)}$) · выход — когда день перекрасится · с ${ts(p.t0)}</div>
+      <div class="pos-sub">вход ${p.entry} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"} · стоп ${p.stop} (−${(p.stop_pct || stop).toFixed(2)} % = −${((p.size || 0) * (p.stop_pct || stop) / 100).toFixed(2)}$) · потолок ${p.cel} (+${((p.stop_pct || stop) * pot).toFixed(1)} % = +${((p.size || 0) * (p.stop_pct || stop) * pot / 100).toFixed(2)}$) · выход — когда день перекрасится · с ${ts(p.t0)}</div>
       <div class="pos-sub">${p.prichina || ""}</div>
     </div>`;
   }).join("");
