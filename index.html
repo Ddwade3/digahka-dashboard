@@ -352,6 +352,11 @@ function stPnlText(p, price){          // «+1.23 % = +0.62$ (+0.6R)» по жи
 function renderStmacd(){
   const box = $("stmacd"); const S = D.stmacd;
   if (!S){ box.innerHTML = ""; return; }
+  // 03.10 17:0x: страница обновляет данные каждую минуту — блок перестраивался целиком и закрывал открытый график.
+  // Перестраиваем только когда изменился состав позиций/сделок; живые цифры обновляет renderStmacdLive.
+  const key = JSON.stringify([S.zhiv, S.depozit, S.pozicii.map(p => [p.symbol, p.entry, p.stop]), S.vsego.n, S.segodnya.n, (S.cfg || {}).vhody]);
+  if (key === window._stKey && box.innerHTML){ renderStmacdLive(); return; }
+  window._stKey = key;
   const ts = ms => { const d = new Date(ms); return ("0"+d.getDate()).slice(-2) + "." + ("0"+(d.getMonth()+1)).slice(-2) + " " + ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2); };
   const wr = S.vsego.n ? Math.round(100 * S.vsego.plus / S.vsego.n) : 0;
   const cfg = S.cfg || {}; const start = cfg.depozit_start || 100; const stop = cfg.stop_pct || 2; const risk = cfg.risk_pct || 1; const pot = cfg.potolok_R || 6;
