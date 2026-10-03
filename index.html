@@ -377,8 +377,25 @@ function renderStmacd(){
       </div>
       <div class="pos-sub">вход ${p.entry} · объём ${p.size ? p.size.toFixed(0) + "$" : "—"} · стоп ${p.stop} (−${(p.stop_pct || stop).toFixed(2)} % = −${((p.size || 0) * (p.stop_pct || stop) / 100).toFixed(2)}$) · потолок ${p.cel} (+${((p.stop_pct || stop) * pot).toFixed(1)} % = +${((p.size || 0) * (p.stop_pct || stop) * pot / 100).toFixed(2)}$) · выход — когда день перекрасится · с ${ts(p.t0)}</div>
       <div class="pos-sub">${p.prichina || ""}</div>
+      <div class="pos-actions"><button class="btn" onclick="stToggle('${p.symbol}')" id="st-btn-${p.symbol}">📈 график + индикатор</button></div>
+      <div class="chartbox" id="st-cb-${p.symbol}" style="display:none">
+        <div class="tfs" id="st-tfs-${p.symbol}"></div>
+        <div class="chart" id="st-chart-${p.symbol}" style="height:300px"></div>
+        <div class="chart" id="st-ind-${p.symbol}" style="height:170px;border-top:1px solid var(--line)"></div>
+        <div class="path-note" id="st-note-${p.symbol}"></div>
+      </div>
     </div>`;
   }).join("");
+  h += `<div class="pos" id="st-pos-__ANY__"><div class="pos-head"><span class="pos-sym">Посмотреть монету</span>
+      <input id="st-any-sym" placeholder="BTC" style="background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 8px;width:110px;text-transform:uppercase" value="${(S.pozicii[0]||{}).symbol ? S.pozicii[0].symbol.replace("USDT","") : "BTC"}">
+      <button class="btn" onclick="stToggle('__ANY__')" id="st-btn-__ANY__">📈 открыть</button></div>
+      <div class="pos-sub">график Binance + индикатор St.MACD снизу, как в TradingView: зелёный бар индикатора — рост, красный — спад; выше +100 — красная зона (перекуп), ниже −100 — синяя (перепрод); ▲ — минутка/ТФ остыл и развернулся вверх, ▼ — перегрелся и развернулся вниз</div>
+      <div class="chartbox" id="st-cb-__ANY__" style="display:none">
+        <div class="tfs" id="st-tfs-__ANY__"></div>
+        <div class="chart" id="st-chart-__ANY__" style="height:300px"></div>
+        <div class="chart" id="st-ind-__ANY__" style="height:170px;border-top:1px solid var(--line)"></div>
+        <div class="path-note" id="st-note-__ANY__"></div>
+      </div></div>`;
   if (S.sdelki.length){
     h += `<div class="scroll"><table><thead><tr><th>Выход</th><th>Монета</th><th></th><th>Причина</th><th class="num">PnL %</th><th class="num">R</th><th class="num">$</th><th class="num">мин</th></tr></thead><tbody>` +
       S.sdelki.map(z => `<tr><td>${ts(z.t1)}</td><td>${z.symbol.replace("USDT","")}</td><td><span class="side ${z.direction}">${z.direction === "long" ? "Л" : "Ш"}</span></td><td class="exit">${z.prichina}</td>
@@ -401,6 +418,100 @@ function renderStmacdLive(){
     const otkr = D.stmacd.pozicii.reduce((a, p) => { const x = stPnl(p, live[p.symbol] || null); return x == null ? a : a + (p.size || 0) * x / 100; }, 0);
     el.textContent = usd(otkr); el.className = "v " + (otkr > 0 ? "green" : (otkr < 0 ? "red" : ""));
   }
+}
+
+/* ───────── St.MACD: индикатор (порт st_macd.py 1-в-1, включая особенность HA в Pine) и график с панелью индикатора ───────── */
+function stEma(x, len){
+  const a = 2 / (len + 1); const out = new Array(x.length); let prev = NaN;
+  for (let i = 0; i < x.length; i++){ const v = x[i]; if (!isFinite(v)){ out[i] = prev; continue; } prev = isFinite(prev) ? a * v + (1 - a) * prev : v; out[i] = prev; }
+  return out;
+}
+function stMacd(bars, fast = 12, slow = 26, sigLen = 9, thr = 100){
+  const n = bars.length, src = bars.map(b => b.close), rng = bars.map(b => (b.high - b.low) === 0 ? NaN : (b.high - b.low));
+  const ef = stEma(src, fast), es = stEma(src, slow), er = stEma(rng, slow);
+  const raw = new Array(n); for (let i = 0; i < n; i++) raw[i] = (ef[i] - es[i]) / er[i] * 100;
+  const bo = raw.map((v, i) => i ? raw[i - 1] : raw[0]); const bh = raw.map((v, i) => Math.max(v, bo[i])); const bl = raw.map((v, i) => Math.min(v, bo[i]));
+  const hc = new Array(n), ho = new Array(n), hh = new Array(n), hl = new Array(n);
+  for (let i = 0; i < n; i++){
+    hc[i] = (bo[i] + bh[i] + bl[i] + raw[i]) / 4;
+    ho[i] = i < 2 ? (bo[i] + raw[i]) / 2 : (ho[i - 2] + hc[i - 1]) / 2;          // особенность Pine: open позапрошлого бара
+    const po = i >= 1 ? ho[i - 1] : ho[i];
+    hh[i] = Math.max(bh[i], po, hc[i]); hl[i] = Math.min(bl[i], po, hc[i]);
+  }
+  const sig = stEma(hc, sigLen); const ob = new Array(n).fill(false), os = new Array(n).fill(false);
+  for (let i = 1; i < n; i++){
+    const down = hc[i] < ho[i] && !(hc[i - 1] < ho[i - 1]), up = hc[i] > ho[i] && !(hc[i - 1] > ho[i - 1]);
+    ob[i] = down && hh[i] > thr; os[i] = up && hl[i] < -thr;
+  }
+  return { o: ho, h: hh, l: hl, c: hc, sig, ob, os };
+}
+const ST_TF = [["1","1м",60],["5","5м",300],["15","15м",900],["60","1ч",3600],["240","4ч",14400],["1440","1д",86400],["10080","1н",604800]];
+const stCharts = {};
+async function stToggle(key){
+  const box = $("st-cb-" + key), btn = $("st-btn-" + key);
+  if (box.style.display !== "none"){ box.style.display = "none"; btn.classList.remove("active"); stKill(key); return; }
+  box.style.display = ""; btn.classList.add("active");
+  $("st-tfs-" + key).innerHTML = ST_TF.map(([tf, nm]) => `<button class="tfbtn${tf==="1"?" active":""}" onclick="stLoad('${key}','${tf}',this)">${nm}</button>`).join("")
+    + `<button class="fsbtn" onclick="naVesEkran('st-cb-${key}')">⛶ на весь экран</button>`;
+  await stLoad(key, "1");
+}
+function stKill(key){ const o = stCharts[key]; if (o){ try{o.price.remove(); o.ind.remove();}catch(e){} delete stCharts[key]; } }
+function stMkPane(el, candles){
+  const c = LightweightCharts.createChart(el, { layout:{ background:{color:"#0d1117"}, textColor:"#7d8794" }, grid:{ vertLines:{color:"#161b22"}, horzLines:{color:"#161b22"} },
+    timeScale:{ timeVisible:true, secondsVisible:false, borderColor:"#232a36" }, rightPriceScale:{ borderColor:"#232a36", minimumWidth: 70 }, crosshair:{ mode:0 }, localization:{ locale:"ru-RU" }, autoSize:true });
+  return c;
+}
+async function stLoad(key, tf, btn){
+  if (btn){ btn.parentElement.querySelectorAll(".tfbtn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); }
+  stKill(key);
+  const p = key === "__ANY__" ? null : ((D.stmacd || {}).pozicii || []).find(x => x.symbol === key);
+  let sym = key === "__ANY__" ? ($("st-any-sym").value || "BTC").toUpperCase().trim() : key;
+  if (!sym.endsWith("USDT")) sym += "USDT";
+  const elP = $("st-chart-" + key), elI = $("st-ind-" + key), note = $("st-note-" + key); elP.innerHTML = ""; elI.innerHTML = ""; note.textContent = "загрузка " + sym + "…";
+  const tfsec = (ST_TF.find(x => x[0] === tf) || [0,0,60])[2];
+  let bars;
+  try { bars = await klines(sym, tf, 600); } catch(e){ note.textContent = "свечи не загрузились: " + e; return; }
+  if (!bars || !bars.length){ note.textContent = "нет свечей по " + sym; return; }
+  const price = stMkPane(elP), ind = stMkPane(elI);
+  const cs = price.addCandlestickSeries({ upColor:"#2ecc71", downColor:"#ff5252", wickUpColor:"#2ecc71", wickDownColor:"#ff5252", borderVisible:false });
+  const a = Math.abs(bars[bars.length-1].close || 1); const prec = a >= 1000 ? 2 : a >= 10 ? 3 : a >= 0.1 ? 5 : 6;
+  cs.applyOptions({ priceFormat:{ type:"price", precision:prec, minMove:Math.pow(10,-prec) } });
+  cs.setData(bars);
+  // индикатор: HA-бары MACD, сигнальная, зоны ±100/±150/±200
+  const m = stMacd(bars); const warm = Math.min(60, bars.length - 1);
+  const ib = bars.map((b, i) => ({ time:b.time, open:m.o[i], high:m.h[i], low:m.l[i], close:m.c[i] })).filter((x, i) => i >= warm && isFinite(x.close) && isFinite(x.open));
+  const is = ind.addCandlestickSeries({ upColor:"#2ecc71", downColor:"#ff5252", wickUpColor:"#2ecc71", wickDownColor:"#ff5252", borderVisible:false, priceFormat:{ type:"price", precision:0, minMove:1 } });
+  is.setData(ib);
+  const sl = ind.addLineSeries({ color:"#f0b429", lineWidth:1, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+  sl.setData(bars.map((b, i) => ({ time:b.time, value:m.sig[i] })).filter((x, i) => i >= warm && isFinite(x.value)));
+  for (const [lvl, col] of [[200,"#ff5252"],[150,"#ff5252"],[100,"#ff5252"],[0,"#7d8794"],[-100,"#4aa3ff"],[-150,"#4aa3ff"],[-200,"#4aa3ff"]]){
+    const z = ind.addLineSeries({ color: col, lineWidth: lvl === 0 ? 1 : (Math.abs(lvl) === 100 ? 2 : 1), lineStyle: Math.abs(lvl) === 100 ? 0 : 2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false });
+    z.setData([{ time: ib[0].time, value: lvl }, { time: ib[ib.length-1].time, value: lvl }]);
+  }
+  const mk = [];
+  for (let i = warm; i < bars.length; i++){ if (m.os[i]) mk.push({ time: bars[i].time, position:"belowBar", color:"#2ecc71", shape:"arrowUp", size:1 }); if (m.ob[i]) mk.push({ time: bars[i].time, position:"aboveBar", color:"#ff5252", shape:"arrowDown", size:1 }); }
+  is.setMarkers(mk);
+  // позиция: вход (зелёная стрелка «вход»), стоп, потолок
+  if (p){
+    const tEntry = Math.floor((Math.floor(p.t0/1000) + SDVIG) / tfsec) * tfsec;
+    const sg = p.direction === "long";
+    if (tEntry >= bars[0].time) cs.setMarkers([{ time: Math.max(tEntry, bars[0].time), position: sg ? "belowBar" : "aboveBar", color:"#2ecc71", shape: sg ? "arrowUp" : "arrowDown", text: "✓ вход " + p.entry }]);
+    const lastT = bars[bars.length-1].time, t0 = Math.max(tEntry, bars[0].time);
+    if (t0 < lastT){
+      const st = price.addLineSeries({ color:"#ff5252", lineWidth:1, lineStyle:0, priceLineVisible:false, lastValueVisible:true, title:"стоп −" + (p.stop_pct||0).toFixed(1) + "%" }); st.setData([{time:t0, value:p.stop},{time:lastT, value:p.stop}]);
+      const cl = price.addLineSeries({ color:"#2ecc71", lineWidth:1, lineStyle:2, priceLineVisible:false, lastValueVisible:true, title:"потолок 6R" }); cl.setData([{time:t0, value:p.cel},{time:lastT, value:p.cel}]);
+      const en = price.addLineSeries({ color:"#f0b429", lineWidth:1, lineStyle:3, priceLineVisible:false, lastValueVisible:true, title:"вход" }); en.setData([{time:t0, value:p.entry},{time:lastT, value:p.entry}]);
+    }
+  }
+  // связать время двух панелей
+  let lock = false;
+  const sync = (from, to) => from.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; try { to.timeScale().setVisibleLogicalRange(r); } catch(e){} lock = false; });
+  sync(price, ind); sync(ind, price);
+  price.timeScale().fitContent();
+  const last = bars.length - 1, v = m.c[last], zona = v >= 100 ? "КРАСНАЯ ЗОНА (перекуп, выше +100)" : v <= -100 ? "СИНЯЯ ЗОНА (перепрод, ниже −100)" : (v > 0 ? "середина, выше нуля" : "середина, ниже нуля");
+  note.innerHTML = `${sym} · ${(ST_TF.find(x => x[0] === tf)||[])[1]} · индикатор сейчас <b>${v.toFixed(0)}</b>, бар <b class="${m.c[last] > m.o[last] ? "green" : "red"}">${m.c[last] > m.o[last] ? "зелёный" : "красный"}</b> · ${zona} · сигнальная ${m.sig[last].toFixed(0)}`
+    + (p ? ` · бот держит ${p.direction === "long" ? "лонг" : "шорт"} с ${new Date(p.t0).toLocaleString("ru-RU")}` : "");
+  stCharts[key] = { price, ind };
 }
 
 /* ───────── позиции ───────── */
@@ -491,7 +602,7 @@ async function klines(sym, tf, limit, endMs){
   // BYBIT, а бот торгует и считает уровни по BINANCE — линии не ложились на свечи
   // тик-в-тик. Источник графика = источник бота. Bybit остаётся запасным.
   try {
-    const im = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1h"}[String(tf)] || (tf + "m");
+    const im = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1h","240":"4h","1440":"1d","10080":"1w"}[String(tf)] || (tf + "m");
     let u = `https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${im}&limit=${Math.min(limit,1500)}`;
     if (endMs) u += "&endTime=" + endMs;
     const rb = await fetch(u);
